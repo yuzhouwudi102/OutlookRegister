@@ -6,12 +6,7 @@ import threading
 from datetime import datetime, timezone
 from faker import Faker
 from abc import ABC, abstractmethod
-from recovery_mailbox import (
-    RecoveryMailboxClient,
-    get_accounts_file,
-    list_authorized_emails,
-    load_backup_accounts,
-)
+from recovery_mailbox import RecoveryMailboxClient
 
 
 class BaseBrowserController(ABC):
@@ -27,14 +22,13 @@ class BaseBrowserController(ABC):
         self.enable_oauth2 = data["oauth2"]['enable_oauth2']
         self.proxy = data['proxy']
         self.email_suffix = data['email_suffix']
-        self.config = data
+        self.recovery_email = data.get('recovery_email', '').strip()
         self.recovery_mailbox_enabled = data.get('recovery_mailbox', {}).get('auto_fetch', False)
-        self.recovery_accounts_file = get_accounts_file(data)
+        self.recovery_mailbox = RecoveryMailboxClient(data, self.proxy)
 
         self.thread_local = threading.local()
         self.cleanup_lock = threading.Lock()
-        self.recovery_locks_guard = threading.Lock()
-        self.recovery_locks = {}
+        self.recovery_lock = threading.Lock()
         self.active_resources = []  # 记录资源以便关闭
 
         self.results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Results')
@@ -116,43 +110,11 @@ class BaseBrowserController(ABC):
             except Exception:
                 break
 
-    def choose_recovery_mailbox(self):
-        accounts = load_backup_accounts(self.recovery_accounts_file)
-        if not accounts:
-            raise RuntimeError(
-                f"备用邮箱列表为空：{self.recovery_accounts_file}"
-            )
-
-        candidates = accounts
-        if self.recovery_mailbox_enabled:
-            authorized_emails = list_authorized_emails(self.config)
-            candidates = [
-                account
-                for account in accounts
-                if account.email in authorized_emails
-            ]
-            if not candidates:
-                raise RuntimeError(
-                    "没有已授权的备用邮箱，请先运行 "
-                    "authorize_recovery_mailbox.py"
-                )
-
-        account = random.choice(candidates)
-        client = RecoveryMailboxClient(
-            self.config,
-            self.proxy,
-            account=account,
-        )
-        return account, client
-
-    def get_recovery_mailbox_lock(self, email):
-        with self.recovery_locks_guard:
-            if email not in self.recovery_locks:
-                self.recovery_locks[email] = threading.Lock()
-            return self.recovery_locks[email]
-
     def handle_recovery_email_prompt(self, page, target_email=""):
         """填写 Microsoft 强制显示的备用邮箱页面。"""
+        if not self.recovery_email:
+            return None
+
         recovery_input = page.locator(
             '#EmailAddress, input[name="EmailAddress"], '
             'input[type="email"], input[placeholder="someone@example.com"]'
@@ -163,49 +125,40 @@ class BaseBrowserController(ABC):
         except Exception:
             return None
 
-        try:
-            account, mailbox_client = self.choose_recovery_mailbox()
-        except Exception as exc:
-            print(f'[Error: Recovery Email] - 选择备用邮箱失败：{exc}')
-            return False
+        recovery_input.fill(self.recovery_email)
+        requested_at = datetime.now(timezone.utc)
 
-        mailbox_lock = self.get_recovery_mailbox_lock(account.email)
-        with mailbox_lock:
-            recovery_input.fill(account.email)
-            requested_at = datetime.now(timezone.utc)
-
-            next_button = None
-            for selector in (
-                '#iNext',
-                '[data-testid="primaryButton"]',
-                'button:has-text("下一步")',
-                'input[type="submit"][value="下一步"]',
-            ):
-                candidate = page.locator(selector).first
-                try:
-                    if candidate.count() > 0 and candidate.is_visible():
-                        next_button = candidate
-                        break
-                except Exception:
-                    continue
-
-            if next_button is None:
-                print(
-                    '[Error: Recovery Email] - '
-                    '已填写备用邮箱，但未找到“下一步”按钮。'
-                )
-                return False
-
-            self.smooth_click(page, next_button)
-            if not self.recovery_mailbox_enabled:
-                print(
-                    f'[Action: Recovery Email] - 已随机填写 {account.email}。'
-                    '自动取码未启用，请手动输入安全代码。'
-                )
-                return True
-
+        next_button = None
+        for selector in (
+            '#iNext',
+            '[data-testid="primaryButton"]',
+            'button:has-text("下一步")',
+            'input[type="submit"][value="下一步"]',
+        ):
+            candidate = page.locator(selector).first
             try:
-                code = mailbox_client.wait_for_code(
+                if candidate.count() > 0 and candidate.is_visible():
+                    next_button = candidate
+                    break
+            except Exception:
+                continue
+
+        if next_button is None:
+            print('[Error: Recovery Email] - 已填写备用邮箱，但未找到“下一步”按钮。')
+            return True
+
+        self.smooth_click(page, next_button)
+        if not self.recovery_mailbox_enabled:
+            print(
+                f'[Action: Recovery Email] - 已填写 {self.recovery_email}。'
+                '自动取码未启用，请手动输入安全代码。'
+            )
+            return True
+
+        try:
+            with self.recovery_lock:
+                code = self.recovery_mailbox.wait_for_code(
+                    self.get_thread_browser(),
                     requested_at=requested_at,
                     target_email=target_email,
                 )
@@ -233,14 +186,11 @@ class BaseBrowserController(ABC):
                     raise RuntimeError('验证码已填写，但没有找到提交按钮')
 
                 self.smooth_click(page, submit_button)
-                print(
-                    f'[Action: Recovery Email] - 已使用 {account.email} '
-                    '自动读取并填写验证码。'
-                )
-            except Exception as exc:
-                print(f'[Error: Recovery Email] - 自动取码或填写失败：{exc}')
-                return False
-            return True
+                print('[Action: Recovery Email] - 已自动读取并填写备用邮箱验证码。')
+        except Exception as exc:
+            print(f'[Error: Recovery Email] - 自动取码或填写失败：{exc}')
+            return False
+        return True
 
     @abstractmethod
     def launch_browser(self):

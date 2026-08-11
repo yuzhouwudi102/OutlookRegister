@@ -1,11 +1,12 @@
 {
     "choose_browser": "patchright",
     "email_suffix": "@outlook.com",
+    "recovery_email": "tarmaobrvkuzbt@outlook.com",
     "recovery_mailbox": {
         "auto_fetch": true,
-        "accounts_file": "Results/backup_email.txt",
-        "token_dir": "Results/recovery_mailbox_token",
-        "legacy_token_cache": "Results/recovery_mailbox_token.json",
+        "password": "",
+        "password_file": "Results/unlogged_email.txt",
+        "token_cache": "Results/recovery_mailbox_token.json",
         "timeout_seconds": 180,
         "poll_interval_seconds": 3,
         "message_lookback_seconds": 30,

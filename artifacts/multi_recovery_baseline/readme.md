@@ -1,11 +1,10 @@
 # OutlookRegister  
 
 自动读取备用邮箱验证码：
-1. 将备用邮箱写入 `Results/backup_email.txt`，每行格式为 `邮箱: 密码`，可填写多个邮箱。
-2. 运行 `python authorize_recovery_mailbox.py`。程序会比较备用邮箱列表与 `Results/recovery_mailbox_token` 中的令牌，并依次授权尚未授权的邮箱。
-3. 每个备用邮箱的 OAuth 令牌会单独保存在 `Results/recovery_mailbox_token` 文件夹中。
-4. 注册遇到备用邮箱页面时，程序会从已授权邮箱中随机选择一个，读取验证码并自动提交。
-5. `Results/unlogged_email.txt` 只保存关闭新邮箱 OAuth 时注册成功的邮箱，不再用于备用邮箱。
+1. `config.json` 中设置 `recovery_email`，并将 `recovery_mailbox.auto_fetch` 保持为 `true`。
+2. 默认从 `Results/unlogged_email.txt` 读取备用邮箱密码，格式为 `邮箱: 密码`；也可以用环境变量 `OUTLOOK_RECOVERY_PASSWORD` 覆盖。
+3. 首次运行会用备用邮箱完成 OAuth 授权，令牌缓存到 `Results/recovery_mailbox_token.json`，之后通过 Microsoft Graph 轮询新邮件。
+4. 验证码提取成功后会自动填写验证码并点击提交；轮询超时和授权失败会让当前注册任务失败。
 Outlook 注册机  
 选择器经常更新，不保证时效性，自行测试。 
 

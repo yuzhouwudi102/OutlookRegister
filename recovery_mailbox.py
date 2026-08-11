@@ -8,6 +8,7 @@ import secrets
 import string
 import tempfile
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, quote
@@ -19,6 +20,127 @@ TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 AUTHORIZE_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
 MESSAGES_ENDPOINT = "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages"
 DEFAULT_CODE_PATTERN = r"(?<!\d)(\d{6,8})(?!\d)"
+DEFAULT_ACCOUNTS_FILE = "Results/backup_email.txt"
+DEFAULT_TOKEN_DIR = "Results/recovery_mailbox_token"
+DEFAULT_LEGACY_TOKEN_FILE = "Results/recovery_mailbox_token.json"
+
+
+@dataclass(frozen=True)
+class RecoveryMailboxAccount:
+    email: str
+    password: str = ""
+
+
+def load_backup_accounts(path=DEFAULT_ACCOUNTS_FILE):
+    path = Path(path)
+    if not path.exists():
+        return []
+
+    accounts = []
+    seen = set()
+    for line_number, original_line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(),
+        start=1,
+    ):
+        line = original_line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        email, separator, password = line.partition(":")
+        email = email.strip().lower()
+        password = password.strip()
+        if not separator or not email or "@" not in email:
+            raise ValueError(
+                f"{path} 第 {line_number} 行格式错误，应为：邮箱: 密码"
+            )
+        if email in seen:
+            continue
+
+        accounts.append(RecoveryMailboxAccount(email=email, password=password))
+        seen.add(email)
+
+    return accounts
+
+
+def get_accounts_file(config):
+    mailbox = config.get("recovery_mailbox", {})
+    return Path(mailbox.get("accounts_file", DEFAULT_ACCOUNTS_FILE))
+
+
+def get_token_dir(config):
+    mailbox = config.get("recovery_mailbox", {})
+    return Path(mailbox.get("token_dir", DEFAULT_TOKEN_DIR))
+
+
+def token_file_for_email(token_dir, email):
+    normalized = email.strip().lower()
+    readable = re.sub(r"[^a-z0-9._-]+", "_", normalized)
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:10]
+    return Path(token_dir) / f"{readable}_{digest}.json"
+
+
+def _read_json(path):
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _atomic_write_json(path, payload):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+            json.dump(payload, file, ensure_ascii=False, indent=2)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temp_name, path)
+    finally:
+        if os.path.exists(temp_name):
+            os.remove(temp_name)
+
+
+def migrate_legacy_token(config):
+    mailbox = config.get("recovery_mailbox", {})
+    legacy_path = Path(
+        mailbox.get("legacy_token_cache", DEFAULT_LEGACY_TOKEN_FILE)
+    )
+    if not legacy_path.is_file():
+        return None
+
+    token = _read_json(legacy_path)
+    email = token.get("email", "").strip().lower()
+    if not email:
+        return None
+
+    destination = token_file_for_email(get_token_dir(config), email)
+    if not destination.exists():
+        _atomic_write_json(destination, token)
+    return destination
+
+
+def list_authorized_emails(config):
+    migrate_legacy_token(config)
+    token_dir = get_token_dir(config)
+    if not token_dir.is_dir():
+        return set()
+
+    authorized = set()
+    for path in token_dir.glob("*.json"):
+        token = _read_json(path)
+        email = token.get("email", "").strip().lower()
+        access_token_valid = (
+            token.get("access_token")
+            and float(token.get("expires_at", 0)) > time.time() + 60
+        )
+        if email and (token.get("refresh_token") or access_token_valid):
+            authorized.add(email)
+    return authorized
 
 
 def generate_code_verifier(length=128):
@@ -35,7 +157,9 @@ def parse_graph_datetime(value):
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(
+            timezone.utc
+        )
     except ValueError:
         return None
 
@@ -105,28 +229,52 @@ def find_code_in_messages(
 
 
 class RecoveryMailboxClient:
-    def __init__(self, config, proxy=""):
+    def __init__(self, config, proxy="", account=None):
         oauth2 = config.get("oauth2", {})
         mailbox = config.get("recovery_mailbox", {})
 
-        self.email = config.get("recovery_email", "").strip()
-        self.client_id = mailbox.get("client_id", oauth2.get("client_id", "")).strip()
+        if account is None:
+            accounts = load_backup_accounts(get_accounts_file(config))
+            if len(accounts) != 1:
+                raise ValueError(
+                    "必须向 RecoveryMailboxClient 指定一个备用邮箱账户"
+                )
+            account = accounts[0]
+        elif isinstance(account, dict):
+            account = RecoveryMailboxAccount(
+                email=account.get("email", "").strip().lower(),
+                password=account.get("password", "").strip(),
+            )
+        elif isinstance(account, str):
+            account = RecoveryMailboxAccount(email=account.strip().lower())
+
+        self.account = account
+        self.email = account.email.strip().lower()
+        self.password = account.password
+        self.client_id = mailbox.get(
+            "client_id",
+            oauth2.get("client_id", ""),
+        ).strip()
         self.redirect_url = mailbox.get(
-            "redirect_url", oauth2.get("redirect_url", "http://localhost:8000")
+            "redirect_url",
+            oauth2.get("redirect_url", "http://localhost:8000"),
         ).strip()
         self.scopes = mailbox.get("scopes", oauth2.get("Scopes", []))
-        self.password = mailbox.get("password", "").strip()
-        self.password_file = Path(
-            mailbox.get("password_file", "Results/unlogged_email.txt")
-        )
-        self.token_cache = Path(
-            mailbox.get("token_cache", "Results/recovery_mailbox_token.json")
-        )
+        self.token_dir = get_token_dir(config)
+        self.token_cache = token_file_for_email(self.token_dir, self.email)
         self.timeout_seconds = float(mailbox.get("timeout_seconds", 180))
-        self.poll_interval_seconds = float(mailbox.get("poll_interval_seconds", 3))
-        self.lookback_seconds = float(mailbox.get("message_lookback_seconds", 30))
-        self.code_pattern = mailbox.get("code_pattern", DEFAULT_CODE_PATTERN)
+        self.poll_interval_seconds = float(
+            mailbox.get("poll_interval_seconds", 3)
+        )
+        self.lookback_seconds = float(
+            mailbox.get("message_lookback_seconds", 30)
+        )
+        self.code_pattern = mailbox.get(
+            "code_pattern",
+            DEFAULT_CODE_PATTERN,
+        )
         self.proxy = proxy.strip()
+        migrate_legacy_token(config)
 
     @property
     def proxies(self):
@@ -135,53 +283,37 @@ class RecoveryMailboxClient:
         return {"http": self.proxy, "https": self.proxy}
 
     def _read_password(self):
+        if self.password:
+            return self.password
         env_password = os.environ.get("OUTLOOK_RECOVERY_PASSWORD", "").strip()
         if env_password:
             return env_password
-        if self.password:
-            return self.password
-        if not self.password_file.exists():
-            raise RuntimeError(f"找不到备用邮箱密码文件：{self.password_file}")
-
-        for line in self.password_file.read_text(encoding="utf-8").splitlines():
-            mailbox, separator, password = line.partition(":")
-            if separator and mailbox.strip().lower() == self.email.lower():
-                return password.strip()
-        raise RuntimeError("备用邮箱密码文件中没有匹配的邮箱记录")
+        raise RuntimeError(
+            f"backup_email.txt 中没有填写 {self.email} 的密码"
+        )
 
     def _load_token(self):
-        if not self.token_cache.exists():
-            return {}
-        try:
-            token = json.loads(self.token_cache.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
-        if token.get("email", "").lower() != self.email.lower():
+        token = _read_json(self.token_cache)
+        if token.get("email", "").strip().lower() != self.email:
             return {}
         return token
 
+    def has_authorization(self):
+        token = self._load_token()
+        access_token_valid = (
+            token.get("access_token")
+            and float(token.get("expires_at", 0)) > time.time() + 60
+        )
+        return bool(token.get("refresh_token") or access_token_valid)
+
     def _save_token(self, token):
-        self.token_cache.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "email": self.email,
             "access_token": token.get("access_token", ""),
             "refresh_token": token.get("refresh_token", ""),
             "expires_at": time.time() + float(token.get("expires_in", 0)),
         }
-        descriptor, temp_name = tempfile.mkstemp(
-            prefix=f".{self.token_cache.name}.",
-            suffix=".tmp",
-            dir=self.token_cache.parent,
-        )
-        try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-                json.dump(payload, file, ensure_ascii=False, indent=2)
-                file.flush()
-                os.fsync(file.fileno())
-            os.replace(temp_name, self.token_cache)
-        finally:
-            if os.path.exists(temp_name):
-                os.remove(temp_name)
+        _atomic_write_json(self.token_cache, payload)
         return payload
 
     def _request_token(self, data):
@@ -195,10 +327,18 @@ class RecoveryMailboxClient:
         try:
             result = response.json()
         except ValueError as exc:
-            raise RuntimeError(f"OAuth 返回了非 JSON 响应（HTTP {response.status_code}）") from exc
+            raise RuntimeError(
+                f"OAuth 返回了非 JSON 响应（HTTP {response.status_code}）"
+            ) from exc
         if not response.ok or "access_token" not in result:
-            detail = result.get("error_description") or result.get("error") or response.status_code
-            raise RuntimeError(f"备用邮箱 OAuth 失败：{str(detail).splitlines()[0]}")
+            detail = (
+                result.get("error_description")
+                or result.get("error")
+                or response.status_code
+            )
+            raise RuntimeError(
+                f"备用邮箱 OAuth 失败：{str(detail).splitlines()[0]}"
+            )
         return result
 
     def _refresh_token(self, refresh_token):
@@ -214,12 +354,7 @@ class RecoveryMailboxClient:
             result["refresh_token"] = refresh_token
         return self._save_token(result)
 
-    def _authorize_with_browser(self, browser):
-        if not self.email or not self.client_id or not self.scopes:
-            raise RuntimeError("备用邮箱 OAuth 配置不完整")
-
-        password = self._read_password()
-        verifier = generate_code_verifier()
+    def build_authorize_url(self, code_verifier):
         params = {
             "client_id": self.client_id,
             "response_type": "code",
@@ -227,44 +362,73 @@ class RecoveryMailboxClient:
             "scope": " ".join(self.scopes),
             "response_mode": "query",
             "prompt": "select_account",
-            "code_challenge": generate_code_challenge(verifier),
+            "login_hint": self.email,
+            "code_challenge": generate_code_challenge(code_verifier),
             "code_challenge_method": "S256",
         }
-        authorize_url = (
+        return (
             f"{AUTHORIZE_ENDPOINT}?"
-            + "&".join(f"{key}={quote(value)}" for key, value in params.items())
+            + "&".join(
+                f"{key}={quote(str(value), safe='')}"
+                for key, value in params.items()
+            )
         )
 
+    def authorize_with_browser(
+        self,
+        browser,
+        interactive=False,
+        timeout_seconds=300,
+    ):
+        if not self.email or not self.client_id or not self.scopes:
+            raise RuntimeError("备用邮箱 OAuth 配置不完整")
+
+        password = self._read_password()
+        verifier = generate_code_verifier()
+        authorize_url = self.build_authorize_url(verifier)
         context = browser.new_context()
         page = context.new_page()
         captured_url = None
 
         def capture_redirect(request):
             nonlocal captured_url
-            if self.redirect_url in request.url and "code=" in request.url:
+            if self.redirect_url in request.url:
                 captured_url = request.url
 
         page.on("request", capture_redirect)
         try:
             try:
-                page.goto(authorize_url, timeout=30000, wait_until="domcontentloaded")
+                page.goto(
+                    authorize_url,
+                    timeout=30000,
+                    wait_until="domcontentloaded",
+                )
             except Exception:
                 pass
 
-            login_input = page.locator('input[name="loginfmt"], input[type="email"]').first
+            login_input = page.locator(
+                'input[name="loginfmt"], input[type="email"]'
+            ).first
             try:
-                login_input.wait_for(state="visible", timeout=15000)
+                login_input.wait_for(state="visible", timeout=10000)
                 login_input.fill(self.email)
-                page.locator("#idSIButton9, button[type='submit'], input[type='submit']").first.click()
+                page.locator(
+                    "#idSIButton9, button[type='submit'], input[type='submit']"
+                ).first.click()
             except Exception:
-                account = page.get_by_text(self.email, exact=False).first
-                if account.count() > 0:
-                    account.click()
+                pass
 
-            password_input = page.locator('input[name="passwd"], input[type="password"]').first
-            password_input.wait_for(state="visible", timeout=15000)
-            password_input.fill(password)
-            page.locator("#idSIButton9, button[type='submit'], input[type='submit']").first.click()
+            password_input = page.locator(
+                'input[name="passwd"], input[type="password"]'
+            ).first
+            try:
+                password_input.wait_for(state="visible", timeout=10000)
+                password_input.fill(password)
+                page.locator(
+                    "#idSIButton9, button[type='submit'], input[type='submit']"
+                ).first.click()
+            except Exception:
+                pass
 
             for selector in (
                 '[data-testid="appConsentPrimaryButton"]',
@@ -277,19 +441,30 @@ class RecoveryMailboxClient:
                 except Exception:
                     continue
 
-            deadline = time.time() + 45
+            if interactive:
+                print(f"[等待授权] {self.email}")
+                print("请在浏览器中完成安全验证和授权，并保持窗口打开。")
+
+            deadline = time.time() + float(timeout_seconds)
             while time.time() < deadline and not captured_url:
-                page.wait_for_timeout(200)
+                page.wait_for_timeout(250)
         finally:
             page.remove_listener("request", capture_redirect)
             context.close()
 
         if not captured_url:
-            raise RuntimeError("未捕获到备用邮箱 OAuth 回调")
+            raise TimeoutError(
+                f"{self.email} 在 {int(timeout_seconds)} 秒内没有完成 OAuth 授权"
+            )
+
         query = parse_qs(captured_url.split("?", 1)[1])
         auth_code = query.get("code", [None])[0]
         if not auth_code:
-            raise RuntimeError("备用邮箱 OAuth 回调中没有授权码")
+            detail = query.get(
+                "error_description",
+                query.get("error", ["未知错误"]),
+            )[0]
+            raise RuntimeError(f"{self.email} OAuth 授权失败：{detail}")
 
         result = self._request_token(
             {
@@ -303,15 +478,26 @@ class RecoveryMailboxClient:
         )
         return self._save_token(result)
 
-    def _get_access_token(self, browser):
+    def _authorize_with_browser(self, browser):
+        return self.authorize_with_browser(
+            browser,
+            interactive=False,
+            timeout_seconds=60,
+        )
+
+    def _get_access_token(self):
         token = self._load_token()
-        if token.get("access_token") and float(token.get("expires_at", 0)) > time.time() + 60:
+        if (
+            token.get("access_token")
+            and float(token.get("expires_at", 0)) > time.time() + 60
+        ):
             return token["access_token"]
         if token.get("refresh_token"):
             token = self._refresh_token(token["refresh_token"])
             return token["access_token"]
-        token = self._authorize_with_browser(browser)
-        return token["access_token"]
+        raise RuntimeError(
+            f"{self.email} 尚未授权，请先运行 authorize_recovery_mailbox.py"
+        )
 
     def _list_messages(self, access_token):
         response = requests.get(
@@ -333,14 +519,19 @@ class RecoveryMailboxClient:
         try:
             result = response.json()
         except ValueError as exc:
-            raise RuntimeError(f"Graph 返回了非 JSON 响应（HTTP {response.status_code}）") from exc
+            raise RuntimeError(
+                f"Graph 返回了非 JSON 响应（HTTP {response.status_code}）"
+            ) from exc
         if not response.ok:
-            detail = (result.get("error") or {}).get("message", response.status_code)
+            detail = (result.get("error") or {}).get(
+                "message",
+                response.status_code,
+            )
             raise RuntimeError(f"读取备用邮箱失败：{detail}")
         return result.get("value", [])
 
-    def wait_for_code(self, browser, requested_at, target_email=""):
-        access_token = self._get_access_token(browser)
+    def wait_for_code(self, requested_at, target_email=""):
+        access_token = self._get_access_token()
         deadline = time.time() + self.timeout_seconds
         refreshed_after_401 = False
 
@@ -351,8 +542,12 @@ class RecoveryMailboxClient:
                     raise RuntimeError("备用邮箱访问令牌已失效")
                 token = self._load_token()
                 if not token.get("refresh_token"):
-                    raise RuntimeError("备用邮箱访问令牌已失效且没有 refresh_token")
-                access_token = self._refresh_token(token["refresh_token"])["access_token"]
+                    raise RuntimeError(
+                        "备用邮箱访问令牌已失效且没有 refresh_token"
+                    )
+                access_token = self._refresh_token(
+                    token["refresh_token"]
+                )["access_token"]
                 refreshed_after_401 = True
                 continue
 
@@ -367,4 +562,6 @@ class RecoveryMailboxClient:
                 return code
             time.sleep(self.poll_interval_seconds)
 
-        raise TimeoutError(f"{int(self.timeout_seconds)} 秒内没有收到备用邮箱验证码")
+        raise TimeoutError(
+            f"{self.email} 在 {int(self.timeout_seconds)} 秒内没有收到验证码"
+        )

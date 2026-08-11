@@ -1,7 +1,10 @@
 CHANGED_BRANCH:
-controllers/base_controller.py -> BaseBrowserController.handle_recovery_email_prompt
-config.json -> recovery_mailbox.auto_fetch and mailbox polling/token settings
-recovery_mailbox.py -> Microsoft Graph polling, OAuth token cache, code extraction
+Results/backup_email.txt -> dedicated multi-account source, one "email: password" record per line
+Results/unlogged_email.txt -> recovery mailbox record removed; remains reserved for no-OAuth registrations
+config.json -> recovery_mailbox.accounts_file and recovery_mailbox.token_dir
+recovery_mailbox.py -> multi-account parser, per-email token files, legacy-token migration
+controllers/base_controller.py -> random authorized mailbox selection and per-mailbox locking
+authorize_recovery_mailbox.py -> compare account list with token directory and sequentially authorize missing accounts
 
 ARTIFACT_PATHS:
 MODIFIED_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\MODIFIED_FILE.py
@@ -9,44 +12,75 @@ DIFF_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\DIFF_F
 VERIFICATION_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\VERIFICATION.txt
 ROLLBACK_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\ROLLBACK.sh
 
-HASHES:
-main.py baseline SHA256=63FBBA1778B0FC26285AE2F624894D93A5F4146A63D204F65C6041DBDD1E32B0
-controllers/base_controller.py baseline SHA256=7D29817A15014DE4D6DE9A61A1A53860B8BF3CA4F2D9C5FF1F6133C9940CA422
+BASELINE_HASHES:
+main.py SHA256=63FBBA1778B0FC26285AE2F624894D93A5F4146A63D204F65C6041DBDD1E32B0
+recovery_mailbox.py SHA256=B136D170DC1949E3E183F9EFD85D9E4D9E176D7E879C17898AB436093DB8A64F
+controllers/base_controller.py SHA256=2D756247126180BBA6DF4E1989C628D818376AC82324EB80EB6ACB56111DBB30
+authorize_recovery_mailbox.py SHA256=48B73127D82DB2B3F5A79E71361F39CE505CADDA09AB1BCA74C3E9B8F149AD4E
 
 BASELINE:
 COMMAND:
-.\.venv\Scripts\python.exe -m py_compile main.py get_token.py controllers\base_controller.py controllers\patchright_controller.py controllers\playwright_controller.py
+.\.venv\Scripts\python.exe -m py_compile main.py recovery_mailbox.py authorize_recovery_mailbox.py controllers\base_controller.py
 INPUT:
-Original tracked Python sources before the recovery-mailbox change.
+Pre-change single-recovery-mailbox source files restored from HEAD.
 LITERAL_OUTPUT:
-BASELINE_PY_COMPILE_EXIT=0
+BASELINE_EXIT=0
 RESULT:
 exit status 0; baseline syntax check passed.
 
 MODIFIED:
 COMMAND:
-.\.venv\Scripts\python.exe -m py_compile main.py get_token.py recovery_mailbox.py controllers\base_controller.py controllers\patchright_controller.py controllers\playwright_controller.py tests\test_recovery_mailbox.py
+.\.venv\Scripts\python.exe -m py_compile main.py get_token.py recovery_mailbox.py authorize_recovery_mailbox.py controllers\base_controller.py controllers\patchright_controller.py controllers\playwright_controller.py tests\test_recovery_mailbox.py
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 INPUT:
-Modified recovery-mailbox branch plus four local unit-test cases.
+Multi-mailbox implementation and eight local unit tests, including account parsing, per-email token paths, pending authorization detection, legacy migration, and random authorized-account selection.
 LITERAL_OUTPUT:
 PY_COMPILE_EXIT=0
-Ran 4 tests in 0.014s
+Ran 8 tests in 0.039s
 OK
 RESULT:
-exit status 0; modified syntax and unit tests passed.
+exit status 0; modified syntax and all eight tests passed.
+
+AUTHORIZATION_SCAN:
+COMMAND:
+.\.venv\Scripts\python.exe authorize_recovery_mailbox.py
+INPUT:
+Current Results/backup_email.txt and Results/recovery_mailbox_token directory.
+LITERAL_OUTPUT:
+备用邮箱总数：1
+已授权：1
+待授权：0
+backup_email.txt 中的备用邮箱均已授权。
+AUTHORIZE_SCAN_EXIT=0
+RESULT:
+exit status 0; the helper traversed both sources and correctly skipped the already-authorized mailbox.
+
+DATA_MIGRATION:
+COMMAND:
+Load config.json, compare Results/backup_email.txt with Results/recovery_mailbox_token, and count non-empty records without printing credentials.
+INPUT:
+Current Results files after moving the previous recovery mailbox record.
+LITERAL_OUTPUT:
+ACCOUNTS_FILE=Results\backup_email.txt
+TOKEN_DIR=Results\recovery_mailbox_token
+ACCOUNT_COUNT=1
+AUTHORIZED_COUNT=1
+PENDING_COUNT=0
+UNLOGGED_NONEMPTY=0
+RESULT:
+exit status 0; one recovery mailbox is stored separately, its token was migrated, and unlogged_email.txt no longer contains that recovery mailbox.
 
 ROLLBACK:
 COMMAND:
-artifacts\ROLLBACK.sh artifacts/rollback-test/base_controller.py artifacts/base_controller.py.baseline
-.\.venv\Scripts\python.exe -m py_compile artifacts\rollback-test\base_controller.py
+artifacts\ROLLBACK.sh artifacts/rollback-test-multi/recovery_mailbox.py artifacts/multi_recovery_baseline/recovery_mailbox.py
+.\.venv\Scripts\python.exe -m py_compile artifacts\rollback-test-multi\recovery_mailbox.py
 INPUT:
-A separate copy of the modified controller file.
+A separate copy of the modified multi-mailbox module and the preserved pre-change module.
 LITERAL_OUTPUT:
-RESTORED target=artifacts/rollback-test/base_controller.py from=artifacts/base_controller.py.baseline
+RESTORED target=artifacts/rollback-test-multi/recovery_mailbox.py from=artifacts/multi_recovery_baseline/recovery_mailbox.py
 ROLLBACK_EXIT=0
-RESTORED_HASH=7D29817A15014DE4D6DE9A61A1A53860B8BF3CA4F2D9C5FF1F6133C9940CA422
-BASELINE_HASH=7D29817A15014DE4D6DE9A61A1A53860B8BF3CA4F2D9C5FF1F6133C9940CA422
+RESTORED_HASH=B136D170DC1949E3E183F9EFD85D9E4D9E176D7E879C17898AB436093DB8A64F
+BASELINE_HASH=B136D170DC1949E3E183F9EFD85D9E4D9E176D7E879C17898AB436093DB8A64F
 ROLLBACK_COMPILE_EXIT=0
 RESULT:
-exit status 0; the separate copy restored byte-for-byte to baseline and compiled successfully. The working-tree controller remains modified.
+exit status 0; the separate copy restored byte-for-byte to the previous single-mailbox behavior and compiled. The working tree remains on the multi-mailbox implementation.
