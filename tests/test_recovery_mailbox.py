@@ -1,9 +1,10 @@
 import json
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from authorize_recovery_mailbox import get_authorization_status
 from controllers.base_controller import BaseBrowserController
@@ -29,6 +30,22 @@ class DummyController(BaseBrowserController):
 
     def get_thread_page(self):
         return None
+
+
+class FakeInboxLocator:
+    def __init__(self):
+        self.timeout = None
+
+    def wait_for(self, timeout):
+        self.timeout = timeout
+
+
+class FakeInboxPage:
+    def __init__(self):
+        self.inbox = FakeInboxLocator()
+
+    def locator(self, selector):
+        return self.inbox
 
 
 def build_config(directory):
@@ -225,6 +242,52 @@ class RecoveryMailboxTests(unittest.TestCase):
                 "legacy@example.com",
             )
             self.assertTrue(migrated.exists())
+
+    def test_oauth_disabled_account_is_saved_to_unlogged_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller = object.__new__(DummyController)
+            controller.results_dir = directory
+            controller.results_lock = threading.Lock()
+            controller.enable_oauth2 = False
+            controller.email_suffix = "@outlook.com"
+
+            first_path = controller.save_registered_account(
+                "new-account",
+                "password",
+            )
+            second_path = controller.save_registered_account(
+                "new-account",
+                "password",
+            )
+
+            self.assertEqual(first_path, second_path)
+            self.assertTrue(first_path.endswith("unlogged_email.txt"))
+            records = Path(first_path).read_text(
+                encoding="utf-8"
+            ).splitlines()
+            self.assertEqual(
+                records,
+                ["new-account@outlook.com: password"],
+            )
+
+    def test_oauth_disabled_still_runs_recovery_email_flow(self):
+        controller = object.__new__(DummyController)
+        controller.enable_oauth2 = False
+        controller.recovery_mailbox_enabled = True
+        controller.handle_recovery_email_prompt = Mock(return_value=True)
+        page = FakeInboxPage()
+
+        result = controller.complete_post_registration(
+            page,
+            "new-account@outlook.com",
+        )
+
+        self.assertTrue(result)
+        controller.handle_recovery_email_prompt.assert_called_once_with(
+            page,
+            "new-account@outlook.com",
+        )
+        self.assertEqual(page.inbox.timeout, 60000)
 
 
 if __name__ == "__main__":

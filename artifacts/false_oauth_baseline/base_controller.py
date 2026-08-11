@@ -33,7 +33,6 @@ class BaseBrowserController(ABC):
 
         self.thread_local = threading.local()
         self.cleanup_lock = threading.Lock()
-        self.results_lock = threading.Lock()
         self.recovery_locks_guard = threading.Lock()
         self.recovery_locks = {}
         self.active_resources = []  # 记录资源以便关闭
@@ -243,70 +242,6 @@ class BaseBrowserController(ABC):
                 return False
             return True
 
-    def save_registered_account(self, email, password):
-        full_email = f"{email}{self.email_suffix}"
-        filename = os.path.join(
-            self.results_dir,
-            'logged_email.txt' if self.enable_oauth2
-            else 'unlogged_email.txt',
-        )
-        record = f"{full_email}: {password}"
-
-        with self.results_lock:
-            os.makedirs(self.results_dir, exist_ok=True)
-            with open(filename, 'a+', encoding='utf-8') as file:
-                file.seek(0)
-                existing_records = {
-                    line.strip()
-                    for line in file.read().splitlines()
-                    if line.strip()
-                }
-                if record not in existing_records:
-                    file.seek(0, os.SEEK_END)
-                    file.write(f"{record}\n")
-                    file.flush()
-                    os.fsync(file.fileno())
-
-        print(f'[Saved: Email Account] - {full_email} -> {filename}')
-        return filename
-
-    def complete_post_registration(self, page, full_email):
-        recovery_email_status = self.handle_recovery_email_prompt(
-            page,
-            full_email,
-        )
-        if recovery_email_status is False:
-            return False
-        recovery_email_required = recovery_email_status is True
-
-        if not recovery_email_required:
-            start_skip_time = time.time()
-            while time.time() - start_skip_time < 20:
-                try:
-                    btn_skip = page.get_by_text("暂时跳过")
-                    if btn_skip.count() > 0 and btn_skip.is_visible():
-                        self.smooth_click(page, btn_skip)
-                        page.wait_for_timeout(random.randint(1000, 1500))
-                    else:
-                        btn_skip.wait_for(timeout=7000)
-                except Exception:
-                    break
-
-        try:
-            if recovery_email_required:
-                inbox_timeout = (
-                    60000 if self.recovery_mailbox_enabled else 300000
-                )
-            else:
-                inbox_timeout = 32000
-            page.locator('[aria-label="新邮件"]').wait_for(
-                timeout=inbox_timeout
-            )
-            return True
-        except Exception:
-            print('[Error: Timeout] - 邮箱未初始化，无法正常收件。')
-            return False
-
     @abstractmethod
     def launch_browser(self):
         """
@@ -321,7 +256,7 @@ class BaseBrowserController(ABC):
         """
         pass
 
-    @abstractmethod
+    @abstractmethod 
     def clean_up(self, page=None, type="all_browser"):
         """
         清理自己创建的内容
@@ -461,10 +396,41 @@ class BaseBrowserController(ABC):
             print("[Error: IP] - 加载超时或因触发机器人检测导致按压次数达到最大仍未通过。")
             return False
 
-        self.save_registered_account(email, password)
+        filename = os.path.join(self.results_dir, 'logged_email.txt' if self.enable_oauth2 else 'unlogged_email.txt')
+        with open(filename, 'a', encoding='utf-8') as f:
+            f.write(f"{email}{self.email_suffix}: {password}\n")
         print(f'[Success: Email Registration] - {email}{self.email_suffix}: {password}')
 
-        return self.complete_post_registration(
-            page,
-            f"{email}{self.email_suffix}",
+        if not self.enable_oauth2:
+            return True
+
+        recovery_email_status = self.handle_recovery_email_prompt(
+            page, f"{email}{self.email_suffix}"
         )
+        if recovery_email_status is False:
+            return False
+        recovery_email_required = recovery_email_status is True
+
+        if not recovery_email_required:
+            start_skip_time = time.time()
+            while time.time() - start_skip_time < 20:
+                try:
+                    btn_skip = page.get_by_text("暂时跳过")
+                    if btn_skip.count() > 0 and btn_skip.is_visible():
+                        self.smooth_click(page, btn_skip)
+                        page.wait_for_timeout(random.randint(1000, 1500))
+                    else:
+                        btn_skip.wait_for(timeout=7000)
+                except Exception:
+                    break
+
+        try:
+            if recovery_email_required:
+                inbox_timeout = 60000 if self.recovery_mailbox_enabled else 300000
+            else:
+                inbox_timeout = 32000
+            page.locator('[aria-label="新邮件"]').wait_for(timeout=inbox_timeout)
+            return True
+        except Exception:
+            print('[Error: Timeout] - 邮箱未初始化，无法正常收件。')
+            return False

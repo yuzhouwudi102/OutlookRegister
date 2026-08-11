@@ -12,12 +12,12 @@
         "code_pattern": "(?<!\\d)(\\d{6,8})(?!\\d)"
     },
     "proxy": "http://127.0.0.1:7890",
-    "bot_protection_wait": 16,
-    "max_captcha_retries": 3,
+    "bot_protection_wait": 20,
+    "max_captcha_retries": 5,
     "concurrent_flows": 1,
     "max_tasks": 1,
    "oauth2": {
-    "enable_oauth2": true,
+    "enable_oauth2": false,
     "client_id": "83266bbe-f241-4074-857f-fda88616d35a",
     "redirect_url": "http://localhost:8000",
     "Scopes": [
