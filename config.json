@@ -2,6 +2,16 @@
     "choose_browser": "patchright",
     "email_suffix": "@outlook.com",
     "recovery_email": "tarmaobrvkuzbt@outlook.com",
+    "recovery_mailbox": {
+        "auto_fetch": true,
+        "password": "",
+        "password_file": "Results/unlogged_email.txt",
+        "token_cache": "Results/recovery_mailbox_token.json",
+        "timeout_seconds": 180,
+        "poll_interval_seconds": 3,
+        "message_lookback_seconds": 30,
+        "code_pattern": "(?<!\\d)(\\d{6,8})(?!\\d)"
+    },
     "proxy": "http://127.0.0.1:7890",
     "bot_protection_wait": 16,
     "max_captcha_retries": 3,

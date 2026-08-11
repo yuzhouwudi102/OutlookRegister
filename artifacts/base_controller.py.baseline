@@ -3,10 +3,8 @@ import time
 import json
 import random
 import threading
-from datetime import datetime, timezone
 from faker import Faker
 from abc import ABC, abstractmethod
-from recovery_mailbox import RecoveryMailboxClient
 
 
 class BaseBrowserController(ABC):
@@ -23,12 +21,9 @@ class BaseBrowserController(ABC):
         self.proxy = data['proxy']
         self.email_suffix = data['email_suffix']
         self.recovery_email = data.get('recovery_email', '').strip()
-        self.recovery_mailbox_enabled = data.get('recovery_mailbox', {}).get('auto_fetch', False)
-        self.recovery_mailbox = RecoveryMailboxClient(data, self.proxy)
 
         self.thread_local = threading.local()
         self.cleanup_lock = threading.Lock()
-        self.recovery_lock = threading.Lock()
         self.active_resources = []  # 记录资源以便关闭
 
         self.results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Results')
@@ -110,10 +105,10 @@ class BaseBrowserController(ABC):
             except Exception:
                 break
 
-    def handle_recovery_email_prompt(self, page, target_email=""):
+    def handle_recovery_email_prompt(self, page):
         """填写 Microsoft 强制显示的备用邮箱页面。"""
         if not self.recovery_email:
-            return None
+            return False
 
         recovery_input = page.locator(
             '#EmailAddress, input[name="EmailAddress"], '
@@ -123,10 +118,9 @@ class BaseBrowserController(ABC):
         try:
             recovery_input.wait_for(state='visible', timeout=8000)
         except Exception:
-            return None
+            return False
 
         recovery_input.fill(self.recovery_email)
-        requested_at = datetime.now(timezone.utc)
 
         next_button = None
         for selector in (
@@ -148,48 +142,10 @@ class BaseBrowserController(ABC):
             return True
 
         self.smooth_click(page, next_button)
-        if not self.recovery_mailbox_enabled:
-            print(
-                f'[Action: Recovery Email] - 已填写 {self.recovery_email}。'
-                '自动取码未启用，请手动输入安全代码。'
-            )
-            return True
-
-        try:
-            with self.recovery_lock:
-                code = self.recovery_mailbox.wait_for_code(
-                    self.get_thread_browser(),
-                    requested_at=requested_at,
-                    target_email=target_email,
-                )
-                code_input = page.locator(
-                    'input[name="VerificationCode"], input[name="otc"], '
-                    'input[name="code"], input[type="tel"], input[inputmode="numeric"], '
-                    'input[aria-label*="code" i], input[placeholder*="code" i], '
-                    'input[aria-label*="代码"], input[placeholder*="代码"]'
-                ).first
-                code_input.wait_for(state='visible', timeout=15000)
-                code_input.fill(code)
-
-                submit_button = None
-                for selector in (
-                    '#iNext',
-                    '[data-testid="primaryButton"]',
-                    'button[type="submit"]',
-                    'input[type="submit"]',
-                ):
-                    candidate = page.locator(selector).first
-                    if candidate.count() > 0 and candidate.is_visible():
-                        submit_button = candidate
-                        break
-                if submit_button is None:
-                    raise RuntimeError('验证码已填写，但没有找到提交按钮')
-
-                self.smooth_click(page, submit_button)
-                print('[Action: Recovery Email] - 已自动读取并填写备用邮箱验证码。')
-        except Exception as exc:
-            print(f'[Error: Recovery Email] - 自动取码或填写失败：{exc}')
-            return False
+        print(
+            f'[Action: Recovery Email] - 已填写 {self.recovery_email}。'
+            '请在 5 分钟内手动输入该邮箱收到的安全代码。'
+        )
         return True
 
     @abstractmethod
@@ -354,12 +310,7 @@ class BaseBrowserController(ABC):
         if not self.enable_oauth2:
             return True
 
-        recovery_email_status = self.handle_recovery_email_prompt(
-            page, f"{email}{self.email_suffix}"
-        )
-        if recovery_email_status is False:
-            return False
-        recovery_email_required = recovery_email_status is True
+        recovery_email_required = self.handle_recovery_email_prompt(page)
 
         if not recovery_email_required:
             start_skip_time = time.time()
@@ -375,10 +326,7 @@ class BaseBrowserController(ABC):
                     break
 
         try:
-            if recovery_email_required:
-                inbox_timeout = 60000 if self.recovery_mailbox_enabled else 300000
-            else:
-                inbox_timeout = 32000
+            inbox_timeout = 300000 if recovery_email_required else 32000
             page.locator('[aria-label="新邮件"]').wait_for(timeout=inbox_timeout)
             return True
         except Exception:

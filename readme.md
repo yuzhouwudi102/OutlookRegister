@@ -1,5 +1,10 @@
 # OutlookRegister  
 
+自动读取备用邮箱验证码：
+1. `config.json` 中设置 `recovery_email`，并将 `recovery_mailbox.auto_fetch` 保持为 `true`。
+2. 默认从 `Results/unlogged_email.txt` 读取备用邮箱密码，格式为 `邮箱: 密码`；也可以用环境变量 `OUTLOOK_RECOVERY_PASSWORD` 覆盖。
+3. 首次运行会用备用邮箱完成 OAuth 授权，令牌缓存到 `Results/recovery_mailbox_token.json`，之后通过 Microsoft Graph 轮询新邮件。
+4. 验证码提取成功后会自动填写验证码并点击提交；轮询超时和授权失败会让当前注册任务失败。
 Outlook 注册机  
 选择器经常更新，不保证时效性，自行测试。 
 

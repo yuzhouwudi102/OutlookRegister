@@ -1,0 +1,52 @@
+CHANGED_BRANCH:
+controllers/base_controller.py -> BaseBrowserController.handle_recovery_email_prompt
+config.json -> recovery_mailbox.auto_fetch and mailbox polling/token settings
+recovery_mailbox.py -> Microsoft Graph polling, OAuth token cache, code extraction
+
+ARTIFACT_PATHS:
+MODIFIED_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\MODIFIED_FILE.py
+DIFF_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\DIFF_FILE.patch
+VERIFICATION_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\VERIFICATION.txt
+ROLLBACK_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\ROLLBACK.sh
+
+HASHES:
+main.py baseline SHA256=63FBBA1778B0FC26285AE2F624894D93A5F4146A63D204F65C6041DBDD1E32B0
+controllers/base_controller.py baseline SHA256=7D29817A15014DE4D6DE9A61A1A53860B8BF3CA4F2D9C5FF1F6133C9940CA422
+
+BASELINE:
+COMMAND:
+.\.venv\Scripts\python.exe -m py_compile main.py get_token.py controllers\base_controller.py controllers\patchright_controller.py controllers\playwright_controller.py
+INPUT:
+Original tracked Python sources before the recovery-mailbox change.
+LITERAL_OUTPUT:
+BASELINE_PY_COMPILE_EXIT=0
+RESULT:
+exit status 0; baseline syntax check passed.
+
+MODIFIED:
+COMMAND:
+.\.venv\Scripts\python.exe -m py_compile main.py get_token.py recovery_mailbox.py controllers\base_controller.py controllers\patchright_controller.py controllers\playwright_controller.py tests\test_recovery_mailbox.py
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+INPUT:
+Modified recovery-mailbox branch plus four local unit-test cases.
+LITERAL_OUTPUT:
+PY_COMPILE_EXIT=0
+Ran 4 tests in 0.014s
+OK
+RESULT:
+exit status 0; modified syntax and unit tests passed.
+
+ROLLBACK:
+COMMAND:
+artifacts\ROLLBACK.sh artifacts/rollback-test/base_controller.py artifacts/base_controller.py.baseline
+.\.venv\Scripts\python.exe -m py_compile artifacts\rollback-test\base_controller.py
+INPUT:
+A separate copy of the modified controller file.
+LITERAL_OUTPUT:
+RESTORED target=artifacts/rollback-test/base_controller.py from=artifacts/base_controller.py.baseline
+ROLLBACK_EXIT=0
+RESTORED_HASH=7D29817A15014DE4D6DE9A61A1A53860B8BF3CA4F2D9C5FF1F6133C9940CA422
+BASELINE_HASH=7D29817A15014DE4D6DE9A61A1A53860B8BF3CA4F2D9C5FF1F6133C9940CA422
+ROLLBACK_COMPILE_EXIT=0
+RESULT:
+exit status 0; the separate copy restored byte-for-byte to baseline and compiled successfully. The working-tree controller remains modified.
