@@ -1,342 +1,339 @@
 diff --git a/controllers/base_controller.py b/controllers/base_controller.py
-index 554442e..ceda88d 100644
+index ceda88d..1df00b6 100644
 --- a/controllers/base_controller.py
 +++ b/controllers/base_controller.py
-@@ -21,6 +21,43 @@ from recovery_mailbox import (
- )
- 
- 
-+ENGLISH_MONTH_NAMES = (
-+    "",
-+    "January",
-+    "February",
-+    "March",
-+    "April",
-+    "May",
-+    "June",
-+    "July",
-+    "August",
-+    "September",
-+    "October",
-+    "November",
-+    "December",
-+)
-+
-+
-+def signup_option_labels(value, field_kind):
-+    """Return visible labels used by localized signup dropdowns."""
-+    number = int(value)
-+    labels = [str(number), f"{number:02d}"]
-+
-+    if field_kind == "month":
-+        month_name = ENGLISH_MONTH_NAMES[number]
-+        labels.extend(
-+            (
-+                month_name,
-+                month_name[:3],
-+                f"{number}月",
-+            )
-+        )
-+    elif field_kind == "day":
-+        labels.append(f"{number}日")
-+
-+    return tuple(dict.fromkeys(labels))
-+
-+
- class BaseBrowserController(ABC):
-     """
-     所有浏览器通用的接口和共享逻辑
-@@ -250,7 +287,9 @@ class BaseBrowserController(ABC):
-                 '#iNext',
-                 '[data-testid="primaryButton"]',
-                 'button:has-text("下一步")',
-+                'button:has-text("Next")',
-                 'input[type="submit"][value="下一步"]',
-+                'input[type="submit"][value="Next"]',
-             ):
-                 candidate = page.locator(selector).first
-                 try:
-@@ -263,7 +302,7 @@ class BaseBrowserController(ABC):
-             if next_button is None:
-                 print(
-                     '[Error: Recovery Email] - '
--                    '已填写备用邮箱，但未找到“下一步”按钮。'
-+                    '已填写备用邮箱，但未找到“下一步/Next”按钮。'
-                 )
-                 return False
- 
-@@ -353,12 +392,23 @@ class BaseBrowserController(ABC):
-             start_skip_time = time.time()
-             while time.time() - start_skip_time < 20:
-                 try:
--                    btn_skip = page.get_by_text("暂时跳过")
--                    if btn_skip.count() > 0 and btn_skip.is_visible():
--                        self.smooth_click(page, btn_skip)
--                        page.wait_for_timeout(random.randint(1000, 1500))
--                    else:
--                        btn_skip.wait_for(timeout=7000)
-+                    btn_skip = None
-+                    for text in ("暂时跳过", "Skip for now"):
-+                        candidate = page.get_by_text(
-+                            text,
-+                            exact=False,
-+                        ).first
-+                        if (
-+                            candidate.count() > 0
-+                            and candidate.is_visible()
-+                        ):
-+                            btn_skip = candidate
-+                            break
-+                    if btn_skip is None:
-+                        page.wait_for_timeout(700)
-+                        continue
-+                    self.smooth_click(page, btn_skip)
-+                    page.wait_for_timeout(random.randint(1000, 1500))
-                 except Exception:
-                     break
- 
-@@ -369,9 +419,17 @@ class BaseBrowserController(ABC):
-                 )
-             else:
-                 inbox_timeout = 32000
--            page.locator('[aria-label="新邮件"]').wait_for(
--                timeout=inbox_timeout
-+            inbox_selector = (
-+                '[aria-label="新邮件"], '
-+                '[aria-label="New mail"], '
-+                '[aria-label="New message"]'
-             )
-+            inbox_locator = page.locator(inbox_selector)
-+            try:
-+                inbox_locator = inbox_locator.first
-+            except AttributeError:
-+                pass
-+            inbox_locator.wait_for(timeout=inbox_timeout)
-             return True
-         except Exception:
+@@ -435,6 +435,15 @@ class BaseBrowserController(ABC):
              print('[Error: Timeout] - 邮箱未初始化，无法正常收件。')
-@@ -439,10 +497,12 @@ class BaseBrowserController(ABC):
-             deadline = time.time() + timeout / 1000
-             while time.time() < deadline:
-                 for selector in selectors:
--                    candidate = page.locator(selector).first
-                     try:
--                        if candidate.count() > 0 and candidate.is_visible():
--                            return candidate
-+                        candidates = page.locator(selector)
-+                        for index in range(min(candidates.count(), 30)):
-+                            candidate = candidates.nth(index)
-+                            if candidate.is_visible():
-+                                return candidate
-                     except Exception:
-                         continue
-                 page.wait_for_timeout(200)
-@@ -467,18 +527,24 @@ class BaseBrowserController(ABC):
-             self.smooth_type(page, field, value)
-             return field
+             return False
  
--        def select_dropdown(selectors, value):
-+        def select_dropdown(selectors, value, field_kind):
-             field = first_visible(selectors, timeout=10000)
-+            option_labels = signup_option_labels(value, field_kind)
-             try:
-                 tag_name = field.evaluate("element => element.tagName")
-             except Exception:
-                 tag_name = ""
++    def finalize_registered_account(self, page, email, password):
++        full_email = f"{email}{self.email_suffix}"
++        if not self.complete_post_registration(page, full_email):
++            return False
++
++        self.save_registered_account(email, password)
++        print(f'[Success: Email Registration] - {full_email}')
++        return True
++
+     @abstractmethod
+     def launch_browser(self):
+         """
+@@ -758,10 +767,8 @@ class BaseBrowserController(ABC):
+             print(f"[Error: Signup Flow] - Signup page handling failed: {exc}")
+             return False
  
-             if tag_name.upper() == "SELECT":
--                for option_kwargs in (
-+                option_attempts = [
-                     {"value": str(int(value))},
--                    {"label": str(int(value))},
--                ):
-+                    {"value": f"{int(value):02d}"},
-+                ]
-+                option_attempts.extend(
-+                    {"label": label}
-+                    for label in option_labels
-+                )
-+                for option_kwargs in option_attempts:
-                     try:
-                         field.select_option(**option_kwargs)
-                         return
-@@ -486,14 +552,32 @@ class BaseBrowserController(ABC):
-                         continue
- 
-             self.smooth_click(page, field)
--            option = first_visible(
-+            option_selectors = []
-+            for label in option_labels:
-+                option_selectors.extend(
-+                    (
-+                        f'[role="option"]:text-is("{label}")',
-+                        f'[role="option"][aria-label="{label}"]',
-+                        f'option:text-is("{label}")',
-+                    )
-+                )
-+            option_selectors.extend(
-                 (
--                    f'[role="option"]:text-is("{value}")',
--                    f'[role="option"]:has-text("{value}")',
--                    f'option[value="{value}"]',
--                ),
--                timeout=5000,
-+                    f'[role="option"][data-value="{int(value)}"]',
-+                    f'option[value="{int(value)}"]',
-+                    f'option[value="{int(value):02d}"]',
-+                )
-             )
-+            try:
-+                option = first_visible(
-+                    tuple(option_selectors),
-+                    timeout=7000,
-+                )
-+            except TimeoutError as exc:
-+                raise TimeoutError(
-+                    f"No visible {field_kind} option found for {value}; "
-+                    f"tried labels: {', '.join(option_labels)}"
-+                ) from exc
-             self.smooth_click(page, option)
- 
-         email_selectors = (
-@@ -599,6 +683,7 @@ class BaseBrowserController(ABC):
-                     '[aria-label*="month" i]',
-                 ),
-                 month,
-+                "month",
-             )
-             self.wait_random_ratio(page, 0.03)
-             select_dropdown(
-@@ -609,6 +694,7 @@ class BaseBrowserController(ABC):
-                     '[aria-label*="day" i]',
-                 ),
-                 day,
-+                "day",
-             )
-             click_primary()
- 
-@@ -640,10 +726,19 @@ class BaseBrowserController(ABC):
-                 )
- 
-             click_primary()
-+            privacy_link = page.locator(
-+                'span > [href="https://go.microsoft.com/fwlink/?LinkID=521839"]'
-+            ).first
-+            if privacy_link.count() > 0:
-+                privacy_link.wait_for(state='detached', timeout=22000)
-             page.wait_for_timeout(400)
- 
-             if (
-                 page.get_by_text("Something went wrong", exact=False).count() > 0
-+                or page.get_by_text('一些异常活动').count() > 0
-+                or page.get_by_text(
-+                    '此站点正在维护，暂时无法使用，请稍后重试。'
-+                ).count() > 0
-             ):
-                 print(
-                     "[Error: IP or browser] - The current IP or browser "
+-        self.save_registered_account(email, password)
+-        print(f'[Success: Email Registration] - {email}{self.email_suffix}: {password}')
+-
+-        return self.complete_post_registration(
++        return self.finalize_registered_account(
+             page,
+-            f"{email}{self.email_suffix}",
++            email,
++            password,
+         )
 diff --git a/controllers/patchright_controller.py b/controllers/patchright_controller.py
-index 92fa149..cca8c67 100644
+index cca8c67..186f195 100644
 --- a/controllers/patchright_controller.py
 +++ b/controllers/patchright_controller.py
-@@ -28,53 +28,90 @@ class PatchrightController(BaseBrowserController):
+@@ -1,4 +1,5 @@
+ import random
++import time
+ from patchright.sync_api import sync_playwright
+ from .base_controller import BaseBrowserController
+ 
+@@ -28,6 +29,12 @@ class PatchrightController(BaseBrowserController):
          
      def handle_captcha(self, page):
  
--        frame1 = page.frame_locator('iframe[title="验证质询"]')
-+        frame1 = page.frame_locator(
++        challenge_iframe = page.locator(
 +            'iframe[title="验证质询"], '
 +            'iframe[title="Verification challenge"]'
-+        )
++        ).first
++        challenge_iframe.wait_for(state="visible", timeout=22000)
++
+         frame1 = page.frame_locator(
+             'iframe[title="验证质询"], '
+             'iframe[title="Verification challenge"]'
+@@ -35,7 +42,9 @@ class PatchrightController(BaseBrowserController):
          frame2 = frame1.frame_locator('iframe[style*="display: block"]')
-+        challenge_selector = (
-+            '[aria-label="可访问性挑战"], '
-+            '[aria-label="Accessibility Challenge"]'
-+        )
-+        press_again_selector = (
-+            '[aria-label="再次按下"], '
-+            '[aria-label="Press again"]'
-+        )
-+        loading_selector = (
-+            '[role="status"][aria-label="正在加载..."], '
-+            '[role="status"][aria-label="Loading..."]'
-+        )
+         challenge_selector = (
+             '[aria-label="可访问性挑战"], '
+-            '[aria-label="Accessibility Challenge"]'
++            '[aria-label="Accessibility Challenge"], '
++            '[aria-label="Accessible challenge"], '
++            '[aria-label*="accessible challenge" i]'
+         )
+         press_again_selector = (
+             '[aria-label="再次按下"], '
+@@ -46,15 +55,142 @@ class PatchrightController(BaseBrowserController):
+             '[role="status"][aria-label="Loading..."]'
+         )
  
-         for _ in range(0, self.max_captcha_retries + 1):
- 
-             page.wait_for_timeout(random.randint(250, 450))
--            loc = frame2.locator('[aria-label="可访问性挑战"]')
-+            loc = frame2.locator(challenge_selector).first
-             self.smooth_click(page, loc)
- 
-             page.wait_for_timeout(random.randint(300, 600))
--            loc2 = frame2.locator('[aria-label="再次按下"]')
-+            loc2 = frame2.locator(press_again_selector).first
-             self.smooth_click(page, loc2)
- 
-             try:
-                 page.locator('.draw').wait_for(state="detached", timeout=14000)
-                 try:
-                     # 简单的认为加载8秒后成功，暂不考虑请求.
--                    page.locator('[role="status"][aria-label="正在加载..."]').wait_for(timeout=5000)
-+                    page.locator(loading_selector).first.wait_for(timeout=5000)
- 
-                     captcha_passed = False
-                     for _ in range(20):
-                         if page.get_by_text('一些异常活动').count() or page.get_by_text('此站点正在维护，暂时无法使用，请稍后重试。').count() > 0:
-                             print("[Error: Rate limit] - 正常通过验证码，但当前IP注册频率过快。")
-                             return False
--                        elif frame2.locator('[aria-label="可访问性挑战"]').count() > 0:  
-+                        elif frame2.locator(challenge_selector).count() > 0:
-                             captcha_passed = False
-                             page.wait_for_timeout(random.randint(500, 1000))
-                             break
--                        elif page.get_by_text("暂时跳过").count() > 0:
-+                        elif (
-+                            page.get_by_text("暂时跳过").count() > 0
-+                            or page.get_by_text(
-+                                "Skip for now",
-+                                exact=False,
-+                            ).count() > 0
-+                        ):
-                             captcha_passed = True
-                             break
-                         page.wait_for_timeout(random.randint(375, 425))
-                     else:
--                        if frame2.locator('[aria-label="可访问性挑战"]').count() == 0:
-+                        if frame2.locator(challenge_selector).count() == 0:
-                             captcha_passed = True
- 
-                     if captcha_passed:
-                         break
- 
-                 except Exception:
--                    if page.get_by_text('暂时跳过').count() > 0:
++        def first_visible(locator):
++            try:
++                count = locator.count()
++            except Exception:
++                return None
++            for index in range(min(count, 20)):
++                candidate = locator.nth(index)
++                try:
++                    if candidate.is_visible():
++                        return candidate
++                except Exception:
++                    continue
++            return None
++
++        def wait_first_visible(locators, timeout=8000):
++            deadline = time.monotonic() + timeout / 1000
++            while time.monotonic() < deadline:
++                for locator in locators:
++                    candidate = first_visible(locator)
++                    if candidate is not None:
++                        return candidate
++                page.wait_for_timeout(200)
++            return None
++
++        def click_accessibility_challenge():
++            locators = (
++                frame2.locator(challenge_selector),
++                frame2.get_by_text(
++                    "Accessible challenge",
++                    exact=True,
++                ),
++                frame2.get_by_text(
++                    "Accessibility Challenge",
++                    exact=True,
++                ),
++                frame1.get_by_text(
++                    "Accessible challenge",
++                    exact=True,
++                ),
++                frame1.get_by_text(
++                    "Accessibility Challenge",
++                    exact=True,
++                ),
++                frame1.get_by_text(
++                    "可访问性挑战",
++                    exact=True,
++                ),
++            )
++            candidate = wait_first_visible(locators)
++            if candidate is None:
++                return False
++            try:
++                candidate.scroll_into_view_if_needed()
++            except Exception:
++                pass
++            try:
++                candidate.click(timeout=5000)
++            except Exception:
++                candidate.click(timeout=5000, force=True)
++            return True
++
++        def press_and_hold():
++            locators = (
++                frame2.locator(
++                    '[aria-label="Press and hold"], '
++                    '[aria-label="按住"]'
++                ),
++                frame2.get_by_text(
++                    "Press and hold",
++                    exact=True,
++                ),
++                frame2.get_by_text(
++                    "按住",
++                    exact=True,
++                ),
++                frame1.get_by_text(
++                    "Press and hold",
++                    exact=True,
++                ),
++                frame1.get_by_text(
++                    "按住",
++                    exact=True,
++                ),
++            )
++            candidate = wait_first_visible(locators)
++            if candidate is None:
++                return False
++            box = candidate.bounding_box()
++            if not box:
++                return False
++            tx = box["x"] + box["width"] / 2
++            ty = box["y"] + box["height"] / 2
++            self.smooth_move_to(page, tx, ty)
++            page.mouse.move(tx, ty)
++            page.mouse.down()
++            try:
++                started_at = time.monotonic()
++                hold_deadline = started_at + 14
++                minimum_release = started_at + 1.8
++                while time.monotonic() < hold_deadline:
++                    page.wait_for_timeout(250)
++                    now = time.monotonic()
++                    if now < minimum_release:
++                        continue
++                    try:
++                        if not candidate.is_visible():
++                            break
++                    except Exception:
++                        break
 +                    if (
-+                        page.get_by_text('暂时跳过').count() > 0
++                        page.get_by_text("暂时跳过").count() > 0
 +                        or page.get_by_text(
 +                            "Skip for now",
 +                            exact=False,
 +                        ).count() > 0
 +                    ):
-                         break
--                    frame1.locator(':has-text("请再试一次"), :has-text("Keep going"), :has-text("a few more tries")').first.wait_for(timeout=15000)
-+                    frame1.locator(
-+                        ':has-text("请再试一次"), '
-+                        ':has-text("Keep going"), '
-+                        ':has-text("a few more tries")'
-+                    ).first.wait_for(timeout=15000)
-                     continue
++                        break
++            finally:
++                page.mouse.up()
++            self.set_last_pos(tx, ty)
++            return True
++
+         for _ in range(0, self.max_captcha_retries + 1):
  
-             except Exception:
--                if page.get_by_text('暂时跳过').count() > 0:
-+                if (
-+                    page.get_by_text('暂时跳过').count() > 0
-+                    or page.get_by_text(
-+                        "Skip for now",
-+                        exact=False,
-+                    ).count() > 0
-+                ):
-                      break
-                 return False
-         else: 
+             page.wait_for_timeout(random.randint(250, 450))
+-            loc = frame2.locator(challenge_selector).first
+-            self.smooth_click(page, loc)
++            if not click_accessibility_challenge():
++                return False
+ 
+             page.wait_for_timeout(random.randint(300, 600))
+-            loc2 = frame2.locator(press_again_selector).first
+-            self.smooth_click(page, loc2)
++            if not press_and_hold():
++                loc2 = first_visible(
++                    frame2.locator(press_again_selector)
++                )
++                if loc2 is None:
++                    return False
++                loc2.click(timeout=5000)
+ 
+             try:
+                 page.locator('.draw').wait_for(state="detached", timeout=14000)
+@@ -67,7 +203,12 @@ class PatchrightController(BaseBrowserController):
+                         if page.get_by_text('一些异常活动').count() or page.get_by_text('此站点正在维护，暂时无法使用，请稍后重试。').count() > 0:
+                             print("[Error: Rate limit] - 正常通过验证码，但当前IP注册频率过快。")
+                             return False
+-                        elif frame2.locator(challenge_selector).count() > 0:
++                        elif (
++                            first_visible(
++                                frame2.locator(challenge_selector)
++                            )
++                            is not None
++                        ):
+                             captcha_passed = False
+                             page.wait_for_timeout(random.randint(500, 1000))
+                             break
+@@ -82,7 +223,12 @@ class PatchrightController(BaseBrowserController):
+                             break
+                         page.wait_for_timeout(random.randint(375, 425))
+                     else:
+-                        if frame2.locator(challenge_selector).count() == 0:
++                        if (
++                            first_visible(
++                                frame2.locator(challenge_selector)
++                            )
++                            is None
++                        ):
+                             captcha_passed = True
+ 
+                     if captcha_passed:
+diff --git a/main.py b/main.py
+index 80458b2..b3d05c5 100644
+--- a/main.py
++++ b/main.py
+@@ -19,12 +19,19 @@ from controllers.playwright_controller import PlaywrightController
+ 
+ def process_single_flow(controller):
+     page = None
++    email = None
++    password = None
+ 
+     try:
+-        page = controller.get_thread_page()
+-
+         email = random_email()
+         password = generate_strong_password()
++        print(
++            f"[Attempt: Email Registration] - "
++            f"{email}{controller.email_suffix}: {password}",
++            flush=True,
++        )
++
++        page = controller.get_thread_page()
+ 
+         # 调用 controller 特定的注册方法 
+         result = controller.outlook_register(page, email, password)
+@@ -107,4 +114,4 @@ if __name__ == "__main__":
+     try:
+         run_concurrent_flows(selected_controller, concurrent_flows, max_tasks)
+     finally:
+-        selected_controller.clean_up(type="all_browser")
+\ No newline at end of file
++        selected_controller.clean_up(type="all_browser")
+diff --git a/tests/test_recovery_mailbox.py b/tests/test_recovery_mailbox.py
+index b292949..57e88c0 100644
+--- a/tests/test_recovery_mailbox.py
++++ b/tests/test_recovery_mailbox.py
+@@ -289,6 +289,43 @@ class RecoveryMailboxTests(unittest.TestCase):
+         )
+         self.assertEqual(page.inbox.timeout, 60000)
+ 
++    def test_failed_post_registration_is_not_saved(self):
++        controller = object.__new__(DummyController)
++        controller.email_suffix = "@outlook.com"
++        controller.complete_post_registration = Mock(
++            return_value=False
++        )
++        controller.save_registered_account = Mock()
++
++        result = controller.finalize_registered_account(
++            Mock(),
++            "failed-account",
++            "password",
++        )
++
++        self.assertFalse(result)
++        controller.save_registered_account.assert_not_called()
++
++    def test_successful_post_registration_is_saved(self):
++        controller = object.__new__(DummyController)
++        controller.email_suffix = "@outlook.com"
++        controller.complete_post_registration = Mock(
++            return_value=True
++        )
++        controller.save_registered_account = Mock()
++
++        result = controller.finalize_registered_account(
++            Mock(),
++            "successful-account",
++            "password",
++        )
++
++        self.assertTrue(result)
++        controller.save_registered_account.assert_called_once_with(
++            "successful-account",
++            "password",
++        )
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_signup_flow.py b/tests/test_signup_flow.py
+index 2bf7162..77cc5ee 100644
+--- a/tests/test_signup_flow.py
++++ b/tests/test_signup_flow.py
+@@ -35,6 +35,10 @@ class SignupFlowTests(unittest.TestCase):
+         self.assertIn('[aria-label="Accessibility Challenge"]', source)
+         self.assertIn('[aria-label="再次按下"]', source)
+         self.assertIn('[aria-label="Press again"]', source)
++        self.assertIn("Accessible challenge", source)
++        self.assertIn("Press and hold", source)
++        self.assertIn("page.mouse.down()", source)
++        self.assertIn("page.mouse.up()", source)
+         self.assertIn("Skip for now", source)
+ 
+     def test_post_registration_keeps_result_updata1_flow_with_english_labels(self):

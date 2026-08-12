@@ -289,6 +289,43 @@ class RecoveryMailboxTests(unittest.TestCase):
         )
         self.assertEqual(page.inbox.timeout, 60000)
 
+    def test_failed_post_registration_is_not_saved(self):
+        controller = object.__new__(DummyController)
+        controller.email_suffix = "@outlook.com"
+        controller.complete_post_registration = Mock(
+            return_value=False
+        )
+        controller.save_registered_account = Mock()
+
+        result = controller.finalize_registered_account(
+            Mock(),
+            "failed-account",
+            "password",
+        )
+
+        self.assertFalse(result)
+        controller.save_registered_account.assert_not_called()
+
+    def test_successful_post_registration_is_saved(self):
+        controller = object.__new__(DummyController)
+        controller.email_suffix = "@outlook.com"
+        controller.complete_post_registration = Mock(
+            return_value=True
+        )
+        controller.save_registered_account = Mock()
+
+        result = controller.finalize_registered_account(
+            Mock(),
+            "successful-account",
+            "password",
+        )
+
+        self.assertTrue(result)
+        controller.save_registered_account.assert_called_once_with(
+            "successful-account",
+            "password",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

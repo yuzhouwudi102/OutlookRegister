@@ -435,15 +435,6 @@ class BaseBrowserController(ABC):
             print('[Error: Timeout] - 邮箱未初始化，无法正常收件。')
             return False
 
-    def finalize_registered_account(self, page, email, password):
-        full_email = f"{email}{self.email_suffix}"
-        if not self.complete_post_registration(page, full_email):
-            return False
-
-        self.save_registered_account(email, password)
-        print(f'[Success: Email Registration] - {full_email}')
-        return True
-
     @abstractmethod
     def launch_browser(self):
         """
@@ -767,8 +758,10 @@ class BaseBrowserController(ABC):
             print(f"[Error: Signup Flow] - Signup page handling failed: {exc}")
             return False
 
-        return self.finalize_registered_account(
+        self.save_registered_account(email, password)
+        print(f'[Success: Email Registration] - {email}{self.email_suffix}: {password}')
+
+        return self.complete_post_registration(
             page,
-            email,
-            password,
+            f"{email}{self.email_suffix}",
         )

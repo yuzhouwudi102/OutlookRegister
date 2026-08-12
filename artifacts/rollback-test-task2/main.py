@@ -19,19 +19,12 @@ from controllers.playwright_controller import PlaywrightController
 
 def process_single_flow(controller):
     page = None
-    email = None
-    password = None
 
     try:
+        page = controller.get_thread_page()
+
         email = random_email()
         password = generate_strong_password()
-        print(
-            f"[Attempt: Email Registration] - "
-            f"{email}{controller.email_suffix}: {password}",
-            flush=True,
-        )
-
-        page = controller.get_thread_page()
 
         # 调用 controller 特定的注册方法 
         result = controller.outlook_register(page, email, password)

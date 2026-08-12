@@ -35,10 +35,6 @@ class SignupFlowTests(unittest.TestCase):
         self.assertIn('[aria-label="Accessibility Challenge"]', source)
         self.assertIn('[aria-label="再次按下"]', source)
         self.assertIn('[aria-label="Press again"]', source)
-        self.assertIn("Accessible challenge", source)
-        self.assertIn("Press and hold", source)
-        self.assertIn("page.mouse.down()", source)
-        self.assertIn("page.mouse.up()", source)
         self.assertIn("Skip for now", source)
 
     def test_post_registration_keeps_result_updata1_flow_with_english_labels(self):
