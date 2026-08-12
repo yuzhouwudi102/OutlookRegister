@@ -7,6 +7,7 @@
 4. 注册遇到备用邮箱页面时，程序会从已授权邮箱中随机选择一个，读取验证码并自动提交。
 5. `Results/unlogged_email.txt` 只保存关闭新邮箱 OAuth 时注册成功的邮箱，不再用于备用邮箱。
 6. `oauth2.enable_oauth2=false` 只关闭新注册邮箱的令牌获取；备用邮箱填写和自动取码流程仍会继续执行，账号密码会立即写入 `Results/unlogged_email.txt`。
+7. `fingerprint.enabled=true` 会让 Patchright、Playwright 和授权浏览器共用有头指纹上下文；`fingerprint.headless=false` 固定关闭无头模式。Playwright 默认使用本机 Edge 路径。
 Outlook 注册机  
 选择器经常更新，不保证时效性，自行测试。 
 

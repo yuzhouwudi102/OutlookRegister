@@ -1,8 +1,11 @@
 CHANGED_BRANCH:
-controllers/base_controller.py -> save_registered_account writes and fsyncs logged/unlogged records under a process lock
-controllers/base_controller.py -> complete_post_registration always runs recovery-email handling regardless of enable_oauth2
-controllers/base_controller.py -> outlook_register no longer returns before the recovery-email branch when enable_oauth2=false
-main.py -> unchanged; it skips new-account token acquisition only after outlook_register completes all post-registration work
+browser_fingerprint.py -> shared coherent Windows fingerprint profile, runtime overrides, WebGL profile, viewport, locale, timezone and launch arguments
+config.json -> fingerprint.enabled=true, fingerprint.headless=false, US locale/timezone/geolocation, Playwright Edge executable path
+controllers/base_controller.py -> shared fingerprint context/page creation and headless=False enforcement
+controllers/patchright_controller.py -> shared fingerprint launch arguments and context
+controllers/playwright_controller.py -> shared fingerprint launch arguments, context and Edge executable fallback path
+recovery_mailbox.py -> fingerprint context/runtime profile support for OAuth authorization
+authorize_recovery_mailbox.py -> fingerprinted visible authorization browser
 
 ARTIFACT_PATHS:
 MODIFIED_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\MODIFIED_FILE.py
@@ -11,14 +14,19 @@ VERIFICATION_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifact
 ROLLBACK_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\ROLLBACK.sh
 
 BASELINE_HASHES:
-controllers/base_controller.py SHA256=0C297EECB8D2023B4CAA6E259657CFFB5BF4502F734B16DA6AA7C2B1D2876627
-main.py SHA256=63FBBA1778B0FC26285AE2F624894D93A5F4146A63D204F65C6041DBDD1E32B0
+config.json=3EB6B853D0497FC073FA5ED8293EDFB6D739B9A576AD893B8A48976D40CE5150
+controllers/base_controller.py=6794400AA35A081BDD2FB1297292E1166201DF1236C694843FE5CE8E655DB32B
+controllers/patchright_controller.py=90FC61D4097C2881DBEA2426FC14B4F5C5D7963B0941B4E0259F49242B8AA31E
+controllers/playwright_controller.py=BBAB460B25DAE78DE23C98804FABD3A18BEC8122B106C42F2156DDDFEA47C204
+authorize_recovery_mailbox.py=37E0A001A1AA395C92F84F0367A3B6E303AD4414DBF4D68FB8CF3ECB1A4931FF
+recovery_mailbox.py=623BC8CDCC1B0F58B5E711725BEAD6A9196C79037CEC4C268F19DEB265C85F18
+main.py=63FBBA1778B0FC26285AE2F624894D93A5F4146A63D204F65C6041DBDD1E32B0
 
 BASELINE:
 COMMAND:
-.\.venv\Scripts\python.exe -m py_compile main.py controllers\base_controller.py recovery_mailbox.py
+.\.venv\Scripts\python.exe -m py_compile main.py controllers\base_controller.py controllers\patchright_controller.py controllers\playwright_controller.py authorize_recovery_mailbox.py recovery_mailbox.py
 INPUT:
-Pre-change controller where enable_oauth2=false returned immediately after registration.
+Pre-fingerprint controller files, with headless=False launch calls but no shared fingerprint context.
 LITERAL_OUTPUT:
 BASELINE_EXIT=0
 RESULT:
@@ -26,43 +34,49 @@ exit status 0; baseline syntax check passed.
 
 MODIFIED:
 COMMAND:
-.\.venv\Scripts\python.exe -m py_compile main.py controllers\base_controller.py recovery_mailbox.py authorize_recovery_mailbox.py tests\test_recovery_mailbox.py
+.\.venv\Scripts\python.exe -m py_compile main.py browser_fingerprint.py controllers\base_controller.py controllers\patchright_controller.py controllers\playwright_controller.py recovery_mailbox.py authorize_recovery_mailbox.py tests\test_browser_fingerprint.py tests\test_recovery_mailbox.py
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 INPUT:
-Modified controller and ten tests, including unlogged file persistence and recovery flow with enable_oauth2=false.
+Shared fingerprint module, both browser controllers, authorization browser, Playwright Edge path, and thirteen local tests.
 LITERAL_OUTPUT:
 PY_COMPILE_EXIT=0
-test_oauth_disabled_account_is_saved_to_unlogged_file ... ok
-test_oauth_disabled_still_runs_recovery_email_flow ... ok
-Ran 10 tests in 0.042s
+Ran 13 tests in 0.041s
 OK
 RESULT:
-exit status 0; syntax and all ten tests passed.
+exit status 0; modified syntax and all thirteen tests passed.
 
-CONTROL_FLOW_CHECK:
+RUNTIME_DIAGNOSTIC:
 COMMAND:
-Inspect controllers/base_controller.py for the removed early return and the two new post-registration methods.
+Start Patchright and Playwright visibly, open about:blank, evaluate fingerprint fields, then close both browsers.
 INPUT:
-Current modified controller source and current Results/unlogged_email.txt.
+Current config.json with fingerprint.enabled=true and fingerprint.headless=false.
 LITERAL_OUTPUT:
-EARLY_RETURN_PATTERN_COUNT=0
-SAVE_METHOD_PRESENT=True
-POST_REGISTRATION_METHOD_PRESENT=True
-UNLOGGED_RECORD_COUNT=1
+PATCHRIGHT profileId=07b8e4ef2f02
+PATCHRIGHT webdriver=null
+PATCHRIGHT hardwareConcurrency=12
+PATCHRIGHT deviceMemory=4
+PATCHRIGHT timezone=America/Los_Angeles
+PATCHRIGHT_HEADLESS_UA=False
+PLAYWRIGHT profileId=4494a25da727
+PLAYWRIGHT webdriver=null
+PLAYWRIGHT hardwareConcurrency=8
+PLAYWRIGHT deviceMemory=8
+PLAYWRIGHT timezone=America/Los_Angeles
+PLAYWRIGHT_HEADLESS_UA=False
 RESULT:
-exit status 0; the early exit is absent, explicit saving is present, recovery completion is present, and the current unlogged result file contains a record.
+exit status 0; both visible browser paths used the shared fingerprint context and neither emitted a HeadlessChrome user agent.
 
 ROLLBACK:
 COMMAND:
-artifacts\ROLLBACK.sh artifacts/rollback-test-false-oauth/base_controller.py artifacts/false_oauth_baseline/base_controller.py
-.\.venv\Scripts\python.exe -m py_compile artifacts\rollback-test-false-oauth\base_controller.py
+artifacts\ROLLBACK.sh artifacts/rollback-test-fingerprint/base_controller.py artifacts/fingerprint_baseline/base_controller.py
+.\.venv\Scripts\python.exe -m py_compile artifacts\rollback-test-fingerprint\base_controller.py
 INPUT:
-A separate copy of the modified controller and the preserved pre-change controller.
+A separate copy of the modified base controller and the preserved pre-fingerprint base controller.
 LITERAL_OUTPUT:
-RESTORED target=artifacts/rollback-test-false-oauth/base_controller.py from=artifacts/false_oauth_baseline/base_controller.py
+RESTORED target=artifacts/rollback-test-fingerprint/base_controller.py from=artifacts/fingerprint_baseline/base_controller.py
 ROLLBACK_EXIT=0
-RESTORED_HASH=0C297EECB8D2023B4CAA6E259657CFFB5BF4502F734B16DA6AA7C2B1D2876627
-BASELINE_HASH=0C297EECB8D2023B4CAA6E259657CFFB5BF4502F734B16DA6AA7C2B1D2876627
+RESTORED_HASH=6794400AA35A081BDD2FB1297292E1166201DF1236C694843FE5CE8E655DB32B
+BASELINE_HASH=6794400AA35A081BDD2FB1297292E1166201DF1236C694843FE5CE8E655DB32B
 ROLLBACK_COMPILE_EXIT=0
 RESULT:
-exit status 0; the separate copy restored byte-for-byte to the prior early-return behavior and compiled. The working-tree controller remains fixed.
+exit status 0; the separate copy restored byte-for-byte to the pre-fingerprint controller and compiled. The working tree remains fingerprint-enabled and headful.

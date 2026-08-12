@@ -15,8 +15,6 @@ from urllib.parse import parse_qs, quote
 
 import requests
 
-from browser_fingerprint import apply_runtime_overrides
-
 
 TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 AUTHORIZE_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
@@ -381,9 +379,6 @@ class RecoveryMailboxClient:
         browser,
         interactive=False,
         timeout_seconds=300,
-        context_options=None,
-        init_script=None,
-        runtime_profile=None,
     ):
         if not self.email or not self.client_id or not self.scopes:
             raise RuntimeError("备用邮箱 OAuth 配置不完整")
@@ -391,26 +386,8 @@ class RecoveryMailboxClient:
         password = self._read_password()
         verifier = generate_code_verifier()
         authorize_url = self.build_authorize_url(verifier)
-        context = browser.new_context(**(context_options or {}))
-        if init_script:
-            context._fingerprint_init_disposable = context.add_init_script(
-                script=init_script
-            )
+        context = browser.new_context()
         page = context.new_page()
-        if init_script:
-            page._fingerprint_init_disposable = page.add_init_script(
-                script=init_script
-            )
-        if runtime_profile:
-            def apply_profile():
-                try:
-                    apply_runtime_overrides(page, runtime_profile)
-                except Exception:
-                    pass
-
-            page.on("domcontentloaded", apply_profile)
-            page.on("load", apply_profile)
-            apply_profile()
         captured_url = None
 
         def capture_redirect(request):

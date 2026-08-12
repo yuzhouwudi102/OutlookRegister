@@ -2,12 +2,6 @@ import json
 
 from patchright.sync_api import sync_playwright
 
-from browser_fingerprint import (
-    build_context_options,
-    build_init_script,
-    build_launch_args,
-    create_fingerprint_profile,
-)
 from recovery_mailbox import (
     RecoveryMailboxClient,
     get_accounts_file,
@@ -58,7 +52,6 @@ def main():
 
     failed_accounts = []
     with sync_playwright() as playwright:
-        fingerprint_config = config.get("fingerprint", {})
         proxy_settings = (
             {"server": proxy, "bypass": "localhost"}
             if proxy
@@ -66,19 +59,8 @@ def main():
         )
         browser = playwright.chromium.launch(
             headless=False,
-            args=build_launch_args(fingerprint_config),
+            args=["--lang=zh-CN"],
             proxy=proxy_settings,
-        )
-        profile = create_fingerprint_profile(
-            fingerprint_config,
-            browser_version=browser.version,
-        )
-        context_options = build_context_options(profile)
-        init_script = build_init_script(profile)
-        print(
-            f"[Browser: Fingerprint] - id={profile['profile_id']}, "
-            f"viewport={profile['viewport']['width']}x"
-            f"{profile['viewport']['height']}, headless=False"
         )
         try:
             for index, account in enumerate(pending_accounts, start=1):
@@ -96,9 +78,6 @@ def main():
                         browser,
                         interactive=True,
                         timeout_seconds=300,
-                        context_options=context_options,
-                        init_script=init_script,
-                        runtime_profile=profile,
                     )
                     print(f"[授权成功] {account.email}")
                     print(f"[令牌文件] {client.token_cache}")

@@ -6,13 +6,6 @@ import threading
 from datetime import datetime, timezone
 from faker import Faker
 from abc import ABC, abstractmethod
-from browser_fingerprint import (
-    apply_runtime_overrides,
-    build_context_options,
-    build_init_script,
-    build_launch_args,
-    create_fingerprint_profile,
-)
 from recovery_mailbox import (
     RecoveryMailboxClient,
     get_accounts_file,
@@ -35,12 +28,6 @@ class BaseBrowserController(ABC):
         self.proxy = data['proxy']
         self.email_suffix = data['email_suffix']
         self.config = data
-        self.fingerprint_config = data.get('fingerprint', {})
-        self.fingerprint_enabled = self.fingerprint_config.get(
-            'enabled',
-            True,
-        )
-        self.browser_headless = False
         self.recovery_mailbox_enabled = data.get('recovery_mailbox', {}).get('auto_fetch', False)
         self.recovery_accounts_file = get_accounts_file(data)
 
@@ -54,63 +41,6 @@ class BaseBrowserController(ABC):
         self.results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Results')
         os.makedirs(self.results_dir, exist_ok=True)
 
-    def get_browser_launch_args(self):
-        if not self.fingerprint_enabled:
-            return ['--lang=zh-CN']
-        return build_launch_args(self.fingerprint_config)
-
-    def get_fingerprint_profile(self, browser):
-        if not hasattr(self.thread_local, 'fingerprint_profile'):
-            browser_version = getattr(browser, 'version', '')
-            if callable(browser_version):
-                browser_version = browser_version()
-            self.thread_local.fingerprint_profile = (
-                create_fingerprint_profile(
-                    self.fingerprint_config,
-                    browser_version=browser_version,
-                )
-            )
-            profile = self.thread_local.fingerprint_profile
-            print(
-                '[Browser: Fingerprint] - '
-                f'id={profile["profile_id"]}, '
-                f'locale={profile["locale"]}, '
-                f'timezone={profile["timezone_id"]}, '
-                f'viewport={profile["viewport"]["width"]}x'
-                f'{profile["viewport"]["height"]}, '
-                'headless=False'
-            )
-        return self.thread_local.fingerprint_profile
-
-    def create_browser_context(self, browser):
-        if not self.fingerprint_enabled:
-            return browser.new_context()
-
-        profile = self.get_fingerprint_profile(browser)
-        context = browser.new_context(**build_context_options(profile))
-        context._fingerprint_init_disposable = context.add_init_script(
-            script=build_init_script(profile)
-        )
-        return context
-
-    def create_browser_page(self, browser):
-        context = self.create_browser_context(browser)
-        page = context.new_page()
-        if self.fingerprint_enabled:
-            profile = self.get_fingerprint_profile(browser)
-            page._fingerprint_init_disposable = page.add_init_script(
-                script=build_init_script(profile)
-            )
-            def apply_profile():
-                try:
-                    apply_runtime_overrides(page, profile)
-                except Exception:
-                    pass
-
-            page.on("domcontentloaded", apply_profile)
-            page.on("load", apply_profile)
-            apply_profile()
-        return page
 
     def get_last_pos(self):
         """获取当前线程的上一次鼠标位置 (x, y)"""

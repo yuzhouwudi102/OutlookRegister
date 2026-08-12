@@ -19,15 +19,12 @@ class PlaywrightController(BaseBrowserController):
                 "server": self.proxy,
                 "bypass": "localhost",
             } if self.proxy else None
-            launch_options = {
-                "headless": self.browser_headless,
-                "args": self.get_browser_launch_args(),
-                "proxy": proxy_settings,
-            }
-            if self.browser_path:
-                launch_options["executable_path"] = self.browser_path
-
-            b = p.chromium.launch(**launch_options)
+            b = p.chromium.launch(
+                executable_path=self.browser_path,
+                headless=False,            
+                args=['--lang=zh-CN'],
+                proxy=proxy_settings
+            )
 
             return p, b
 
@@ -37,7 +34,8 @@ class PlaywrightController(BaseBrowserController):
 
     def get_thread_page(self):
         browser = self.get_thread_browser()
-        return self.create_browser_page(browser)
+        context = browser.new_context()
+        return context.new_page()
     
     def handle_captcha(self, page):
 
@@ -94,3 +92,4 @@ class PlaywrightController(BaseBrowserController):
                 try:
                     p.stop()
                 except Exception: pass
+

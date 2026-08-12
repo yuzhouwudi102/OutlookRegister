@@ -15,8 +15,8 @@ class PatchrightController(BaseBrowserController):
             } if self.proxy else None
 
             b = p.chromium.launch(
-                headless=self.browser_headless,
-                args=self.get_browser_launch_args(),
+                headless=False,            
+                args=['--lang=zh-CN'],
                 proxy=proxy_settings
             )
 
@@ -84,7 +84,8 @@ class PatchrightController(BaseBrowserController):
 
     def get_thread_page(self):
         browser = self.get_thread_browser()
-        return self.create_browser_page(browser)
+        context = browser.new_context()
+        return context.new_page()
 
     def clean_up(self, page=None, type="all_browser"):
         if type == "done_browser" and page:

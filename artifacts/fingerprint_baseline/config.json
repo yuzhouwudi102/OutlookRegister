@@ -12,36 +12,6 @@
         "code_pattern": "(?<!\\d)(\\d{6,8})(?!\\d)"
     },
     "proxy": "http://127.0.0.1:7890",
-    "fingerprint": {
-        "enabled": true,
-        "headless": false,
-        "locale": "en-US",
-        "languages": [
-            "en-US",
-            "en"
-        ],
-        "timezone_id": "America/Los_Angeles",
-        "geolocation": {
-            "longitude": -118.2437,
-            "latitude": 34.0522,
-            "accuracy": 25
-        },
-        "color_scheme": "light",
-        "hardware_concurrency": [
-            4,
-            8,
-            12,
-            16
-        ],
-        "device_memory": [
-            4,
-            8
-        ],
-        "device_scale_factor": [
-            1,
-            1.25
-        ]
-    },
     "bot_protection_wait": 20,
     "max_captcha_retries": 5,
     "concurrent_flows": 1,
@@ -56,9 +26,9 @@
         "https://graph.microsoft.com/Mail.Send",
         "https://graph.microsoft.com/User.Read"
     ]
-    },
+},
     "playwright": {
-        "browser_path": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+        "browser_path": ""
     },
     "info": "外层参数必须填写,内部参数可选.email_suffix参数只能是@outlook.com或者@hotmail.com.playwright可用性较差.并且使用playwright指纹浏览器要能过https://www.browserscan.net,否则请使用patchright.请本地搭建代理池."
 }
