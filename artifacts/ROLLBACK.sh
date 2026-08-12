@@ -1,8 +1,12 @@
-﻿#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env sh
+set -eu
 
-TARGET="${1:?target file is required}"
-BASELINE="${2:?baseline file is required}"
+if [ "$#" -ne 2 ]; then
+  echo "usage: $0 TARGET BASELINE" >&2
+  exit 2
+fi
 
-cp -- "$BASELINE" "$TARGET"
-printf 'RESTORED target=%s from=%s\n' "$TARGET" "$BASELINE"
+target=$1
+baseline=$2
+cp "$baseline" "$target"
+echo "RESTORED target=$target from=$baseline"

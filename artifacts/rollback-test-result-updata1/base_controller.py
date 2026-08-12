@@ -21,43 +21,6 @@ from recovery_mailbox import (
 )
 
 
-ENGLISH_MONTH_NAMES = (
-    "",
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-)
-
-
-def signup_option_labels(value, field_kind):
-    """Return visible labels used by localized signup dropdowns."""
-    number = int(value)
-    labels = [str(number), f"{number:02d}"]
-
-    if field_kind == "month":
-        month_name = ENGLISH_MONTH_NAMES[number]
-        labels.extend(
-            (
-                month_name,
-                month_name[:3],
-                f"{number}月",
-            )
-        )
-    elif field_kind == "day":
-        labels.append(f"{number}日")
-
-    return tuple(dict.fromkeys(labels))
-
-
 class BaseBrowserController(ABC):
     """
     所有浏览器通用的接口和共享逻辑
@@ -287,9 +250,7 @@ class BaseBrowserController(ABC):
                 '#iNext',
                 '[data-testid="primaryButton"]',
                 'button:has-text("下一步")',
-                'button:has-text("Next")',
                 'input[type="submit"][value="下一步"]',
-                'input[type="submit"][value="Next"]',
             ):
                 candidate = page.locator(selector).first
                 try:
@@ -302,7 +263,7 @@ class BaseBrowserController(ABC):
             if next_button is None:
                 print(
                     '[Error: Recovery Email] - '
-                    '已填写备用邮箱，但未找到“下一步/Next”按钮。'
+                    '已填写备用邮箱，但未找到“下一步”按钮。'
                 )
                 return False
 
@@ -392,23 +353,12 @@ class BaseBrowserController(ABC):
             start_skip_time = time.time()
             while time.time() - start_skip_time < 20:
                 try:
-                    btn_skip = None
-                    for text in ("暂时跳过", "Skip for now"):
-                        candidate = page.get_by_text(
-                            text,
-                            exact=False,
-                        ).first
-                        if (
-                            candidate.count() > 0
-                            and candidate.is_visible()
-                        ):
-                            btn_skip = candidate
-                            break
-                    if btn_skip is None:
-                        page.wait_for_timeout(700)
-                        continue
-                    self.smooth_click(page, btn_skip)
-                    page.wait_for_timeout(random.randint(1000, 1500))
+                    btn_skip = page.get_by_text("暂时跳过")
+                    if btn_skip.count() > 0 and btn_skip.is_visible():
+                        self.smooth_click(page, btn_skip)
+                        page.wait_for_timeout(random.randint(1000, 1500))
+                    else:
+                        btn_skip.wait_for(timeout=7000)
                 except Exception:
                     break
 
@@ -419,17 +369,9 @@ class BaseBrowserController(ABC):
                 )
             else:
                 inbox_timeout = 32000
-            inbox_selector = (
-                '[aria-label="新邮件"], '
-                '[aria-label="New mail"], '
-                '[aria-label="New message"]'
+            page.locator('[aria-label="新邮件"]').wait_for(
+                timeout=inbox_timeout
             )
-            inbox_locator = page.locator(inbox_selector)
-            try:
-                inbox_locator = inbox_locator.first
-            except AttributeError:
-                pass
-            inbox_locator.wait_for(timeout=inbox_timeout)
             return True
         except Exception:
             print('[Error: Timeout] - 邮箱未初始化，无法正常收件。')
@@ -497,12 +439,10 @@ class BaseBrowserController(ABC):
             deadline = time.time() + timeout / 1000
             while time.time() < deadline:
                 for selector in selectors:
+                    candidate = page.locator(selector).first
                     try:
-                        candidates = page.locator(selector)
-                        for index in range(min(candidates.count(), 30)):
-                            candidate = candidates.nth(index)
-                            if candidate.is_visible():
-                                return candidate
+                        if candidate.count() > 0 and candidate.is_visible():
+                            return candidate
                     except Exception:
                         continue
                 page.wait_for_timeout(200)
@@ -527,24 +467,18 @@ class BaseBrowserController(ABC):
             self.smooth_type(page, field, value)
             return field
 
-        def select_dropdown(selectors, value, field_kind):
+        def select_dropdown(selectors, value):
             field = first_visible(selectors, timeout=10000)
-            option_labels = signup_option_labels(value, field_kind)
             try:
                 tag_name = field.evaluate("element => element.tagName")
             except Exception:
                 tag_name = ""
 
             if tag_name.upper() == "SELECT":
-                option_attempts = [
+                for option_kwargs in (
                     {"value": str(int(value))},
-                    {"value": f"{int(value):02d}"},
-                ]
-                option_attempts.extend(
-                    {"label": label}
-                    for label in option_labels
-                )
-                for option_kwargs in option_attempts:
+                    {"label": str(int(value))},
+                ):
                     try:
                         field.select_option(**option_kwargs)
                         return
@@ -552,32 +486,14 @@ class BaseBrowserController(ABC):
                         continue
 
             self.smooth_click(page, field)
-            option_selectors = []
-            for label in option_labels:
-                option_selectors.extend(
-                    (
-                        f'[role="option"]:text-is("{label}")',
-                        f'[role="option"][aria-label="{label}"]',
-                        f'option:text-is("{label}")',
-                    )
-                )
-            option_selectors.extend(
+            option = first_visible(
                 (
-                    f'[role="option"][data-value="{int(value)}"]',
-                    f'option[value="{int(value)}"]',
-                    f'option[value="{int(value):02d}"]',
-                )
+                    f'[role="option"]:text-is("{value}")',
+                    f'[role="option"]:has-text("{value}")',
+                    f'option[value="{value}"]',
+                ),
+                timeout=5000,
             )
-            try:
-                option = first_visible(
-                    tuple(option_selectors),
-                    timeout=7000,
-                )
-            except TimeoutError as exc:
-                raise TimeoutError(
-                    f"No visible {field_kind} option found for {value}; "
-                    f"tried labels: {', '.join(option_labels)}"
-                ) from exc
             self.smooth_click(page, option)
 
         email_selectors = (
@@ -683,7 +599,6 @@ class BaseBrowserController(ABC):
                     '[aria-label*="month" i]',
                 ),
                 month,
-                "month",
             )
             self.wait_random_ratio(page, 0.03)
             select_dropdown(
@@ -694,7 +609,6 @@ class BaseBrowserController(ABC):
                     '[aria-label*="day" i]',
                 ),
                 day,
-                "day",
             )
             click_primary()
 
@@ -726,19 +640,10 @@ class BaseBrowserController(ABC):
                 )
 
             click_primary()
-            privacy_link = page.locator(
-                'span > [href="https://go.microsoft.com/fwlink/?LinkID=521839"]'
-            ).first
-            if privacy_link.count() > 0:
-                privacy_link.wait_for(state='detached', timeout=22000)
             page.wait_for_timeout(400)
 
             if (
                 page.get_by_text("Something went wrong", exact=False).count() > 0
-                or page.get_by_text('一些异常活动').count() > 0
-                or page.get_by_text(
-                    '此站点正在维护，暂时无法使用，请稍后重试。'
-                ).count() > 0
             ):
                 print(
                     "[Error: IP or browser] - The current IP or browser "

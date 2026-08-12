@@ -1,11 +1,18 @@
-﻿CHANGED_BRANCH:
-controllers/base_controller.py -> signup page detection and selector handling
+CHANGED_BRANCH:
+controllers/base_controller.py -> English birthday dropdown selection and result updata1 post-signup continuation
+controllers/patchright_controller.py -> result updata1 proof-of-human flow with English challenge labels
+tests/test_signup_flow.py -> month/day and post-signup regression coverage
 
 CHANGED_FIELDS:
-- Skip the legacy consent-button wait when the current signup page already shows the New email field.
-- Recognize current English signup controls: email, password, Next, birth year/month/day, first name, and last name.
-- Use visible-element polling and native select_option for birthday dropdowns.
-- Preserve headful mode and existing captcha/recovery flow.
+- The value 11 remains valid for a day, while an English month dropdown now tries November and Nov for month 11.
+- The dropdown search uses exact visible labels and native select values/labels, avoiding a broad :has-text("11") match.
+- Visible-element polling checks every matching locator instead of only the first hidden match.
+- The result updata1 registration transition waits for the privacy link to detach before proof-of-human handling.
+- The result updata1 proof-of-human flow keeps the same click/retry sequence and supports both Chinese and English iframe/ARIA labels.
+- Recovery Next, Skip for now, and inbox New mail controls support both Chinese and English text.
+
+REFERENCE:
+Git commit 16dfe5c (result updata1)
 
 ARTIFACT_PATHS:
 MODIFIED_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\MODIFIED_FILE.py
@@ -13,60 +20,60 @@ DIFF_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\DIFF_F
 VERIFICATION_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\VERIFICATION.txt
 ROLLBACK_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\ROLLBACK.sh
 
-SOURCE_PATH:
+SOURCE_PATHS:
 E:\agent worktable\gpt free plan\OutlookRegister-main\controllers\base_controller.py
+E:\agent worktable\gpt free plan\OutlookRegister-main\controllers\patchright_controller.py
+E:\agent worktable\gpt free plan\OutlookRegister-main\tests\test_signup_flow.py
 
 HASHES:
-BASELINE_SHA256=EEBC5D56AACF6A7B32DB3C28D0888EA4183FD87B3062B390E982000F949601FB
-MODIFIED_SHA256=9B03BCA21E06C0937DE29D2F95AA535C99B65F7A5DA476F06FB0BE99EDDF52FE
+BASELINE_BASE_CONTROLLER_SHA256=015FE899F592FAE6A9D5C5B7344781EAEC46384A04B82CB3D1E6EDC3535429A3
+BASELINE_PATCHRIGHT_CONTROLLER_SHA256=2520A2616F71E056F026C536B2260E888748CF7AB9E5642A639948D888893D96
+MODIFIED_BASE_CONTROLLER_SHA256=DBDE5B1E64F597E83276DF48A21619E6A454D9196971D1DFB2837F6F95C28BD2
+MODIFIED_PATCHRIGHT_CONTROLLER_SHA256=19200AFA86464BE0D6CAB8A430C94E05495D8682A6B2F9DFCB7A104EEDE02211
+MODIFIED_TEST_SHA256=A35CE53713452AD889668437AB77C2F2F1A6319D21A5C751CFF2B9CF29CF9FCD
+MODIFIED_FILE_SHA256=DBDE5B1E64F597E83276DF48A21619E6A454D9196971D1DFB2837F6F95C28BD2
+DIFF_FILE_SHA256=9A8F39ECC700FD0E4407B40AD07C141128E85FD8E41C1045B5CFC537B2B24202
+ROLLBACK_FILE_SHA256=8D01DDEEA65E32E26B3C2D31C5895547B5408E9763743D4E2EA2517C28B7E3E8
 
 BASELINE:
 COMMAND:
-.\.venv\Scripts\python.exe -m py_compile artifacts\signup_baseline\base_controller.py
+$env:PYTHONDONTWRITEBYTECODE='1'; $env:PYTHONIOENCODING='utf-8'; .\.venv\Scripts\python.exe -m py_compile artifacts\result_updata1_baseline\controllers\base_controller.py artifacts\result_updata1_baseline\controllers\patchright_controller.py
 INPUT:
-Pre-change controllers/base_controller.py copied from HEAD.
+Pre-change controllers/base_controller.py and controllers/patchright_controller.py copied before modification.
 LITERAL_OUTPUT:
 BASELINE_COMPILE_EXIT=0
+BASELINE_SELECTOR_RESULT=generic_numeric_option_count=1; english_month_name_count=0
 RESULT:
-exit status 0; baseline syntax check passed.
+exit status 0; baseline syntax passed, but its current dropdown branch only had the generic numeric option and no English month-name mapping.
 
 MODIFIED:
 COMMAND:
-.\.venv\Scripts\python.exe -m py_compile controllers\base_controller.py
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+$env:PYTHONDONTWRITEBYTECODE='1'; $env:PYTHONIOENCODING='utf-8'; .\.venv\Scripts\python.exe -m py_compile controllers\base_controller.py controllers\patchright_controller.py tests\test_signup_flow.py
+$env:PYTHONDONTWRITEBYTECODE='1'; $env:PYTHONIOENCODING='utf-8'; .\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -c "from controllers.base_controller import signup_option_labels; print('MODIFIED_SELECTOR_RESULT=' + repr(signup_option_labels('11','month')))"
 INPUT:
-Updated signup flow with current English-page selectors and direct New email detection.
+Modified English birthday option mapping, exact visible option matching, restored result updata1 transition, bilingual proof-of-human selectors, and regression tests.
 LITERAL_OUTPUT:
 MODIFIED_COMPILE_EXIT=0
-Ran 13 tests in 0.041s
+Ran 18 tests in 0.044s
 OK
 MODIFIED_TEST_EXIT=0
+MODIFIED_SELECTOR_RESULT=('11', 'November', 'Nov', '11月')
 RESULT:
-exit status 0; modified syntax check and all 13 local tests passed.
-
-RUNTIME_DIAGNOSTIC:
-COMMAND:
-Start Patchright visibly, navigate to https://outlook.live.com/mail/0/?prompt=create_account, and poll the current email selectors.
-INPUT:
-Current config.json with fingerprint.enabled=true and fingerprint.headless=false.
-LITERAL_OUTPUT:
-[Browser: Fingerprint] - id=496c9c0c513f, locale=en-US, timezone=America/Los_Angeles, viewport=1365x768, headless=False
-EMAIL_SELECTOR=input[type="email"]
-EMAIL_VISIBLE=True
-HEADLESS=False
-RESULT:
-exit status 0; the screenshot page exposes a visible email field and the updated flow can proceed without waiting for the old consent text.
+exit status 0; modified syntax and all 18 tests passed. Month 11 now resolves to English November/Nov as well as numeric and Chinese labels, while day 11 remains numeric.
 
 ROLLBACK:
 COMMAND:
-sh artifacts/ROLLBACK.sh artifacts/rollback-test-signup/base_controller.py artifacts/signup_baseline/base_controller.py
-.\.venv\Scripts\python.exe -m py_compile artifacts\rollback-test-signup\base_controller.py
+sh artifacts/ROLLBACK.sh artifacts/rollback-test-result-updata1/base_controller.py artifacts/result_updata1_baseline/controllers/base_controller.py
+.\.venv\Scripts\python.exe -m py_compile artifacts/rollback-test-result-updata1/base_controller.py
 INPUT:
-A separate copy of the modified controller and the preserved baseline controller.
+A separate copy of the modified controller and the preserved pre-change baseline controller.
 LITERAL_OUTPUT:
-RESTORED target=artifacts/rollback-test-signup/base_controller.py from=artifacts/signup_baseline/base_controller.py
-ROLLBACK_HASH=EEBC5D56AACF6A7B32DB3C28D0888EA4183FD87B3062B390E982000F949601FB
+RESTORED target=artifacts/rollback-test-result-updata1/base_controller.py from=artifacts/result_updata1_baseline/controllers/base_controller.py
 ROLLBACK_EXIT=0
+ROLLBACK_HASH=015FE899F592FAE6A9D5C5B7344781EAEC46384A04B82CB3D1E6EDC3535429A3
+BASELINE_HASH=015FE899F592FAE6A9D5C5B7344781EAEC46384A04B82CB3D1E6EDC3535429A3
 ROLLBACK_COMPILE_EXIT=0
+RESTORED_SELECTOR_RESULT=generic_numeric_option_count=1; english_month_name_count=0
 RESULT:
-exit status 0; rollback restored the separate copy byte-for-byte and the restored copy compiled. The working controller and MODIFIED_FILE remain on the changed branch.
+exit status 0; rollback restored the separate copy byte-for-byte and restored the original numeric-only behavior. The working controllers and MODIFIED_FILE remain changed.
