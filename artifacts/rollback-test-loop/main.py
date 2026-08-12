@@ -6,11 +6,6 @@ from concurrent.futures import ThreadPoolExecutor
 from utils import random_email, generate_strong_password
 from controllers.patchright_controller import PatchrightController
 from controllers.playwright_controller import PlaywrightController
-from recovery_mailbox import (
-    build_loop_token_payload,
-    clear_and_write_loop_backup,
-    validate_loop_creation,
-)
 
 
 
@@ -22,7 +17,7 @@ from recovery_mailbox import (
 # 4. 模拟真人轨迹
 # 时区
 
-def process_single_flow(controller, loop_account=None):
+def process_single_flow(controller):
     page = None
     email = None
     password = None
@@ -35,9 +30,6 @@ def process_single_flow(controller, loop_account=None):
             f"{email}{controller.email_suffix}: {password}",
             flush=True,
         )
-
-        if loop_account is not None:
-            controller.set_loop_recovery_account(loop_account)
 
         page = controller.get_thread_page()
 
@@ -55,21 +47,6 @@ def process_single_flow(controller, loop_account=None):
             with open(os.path.join(os.path.dirname(__file__), 'Results', 'outlook_token.txt'), 'a', encoding='utf-8') as f2:
                 f2.write(f"{email}{controller.email_suffix}---{password}---{refresh_token}---{access_token}---{expire_at}\n") 
             print(f'[Success: TokenAuth] - {email}{controller.email_suffix}')
-
-            if controller.loop_creation_enabled:
-                token_payload = build_loop_token_payload(
-                    f"{email}{controller.email_suffix}",
-                    refresh_token,
-                    access_token,
-                    expire_at,
-                )
-                with controller.loop_creation_lock:
-                    clear_and_write_loop_backup(
-                        controller.config,
-                        f"{email}{controller.email_suffix}",
-                        password,
-                        token_payload,
-                    )
             return True
         else:
             return False
@@ -82,12 +59,7 @@ def process_single_flow(controller, loop_account=None):
 
         controller.clean_up(page, "done_browser")
 
-def run_concurrent_flows(
-    controller,
-    concurrent_flows=10,
-    max_tasks=100,
-    loop_accounts=None,
-):
+def run_concurrent_flows(controller, concurrent_flows=10, max_tasks=100):
     task_counter = 0
     succeeded_tasks = 0
     failed_tasks = 0
@@ -109,16 +81,7 @@ def run_concurrent_flows(
                 running_futures.remove(future)
 
             while len(running_futures) < concurrent_flows and task_counter < max_tasks:
-                loop_account = (
-                    loop_accounts[task_counter]
-                    if loop_accounts is not None
-                    else None
-                )
-                new_future = executor.submit(
-                    process_single_flow,
-                    controller,
-                    loop_account,
-                )
+                new_future = executor.submit(process_single_flow, controller)
                 running_futures.add(new_future)
                 task_counter += 1
                 if max_tasks > 1 and task_counter % (max_tasks // 2) == 0:
@@ -139,14 +102,6 @@ if __name__ == "__main__":
 
     max_tasks = data["max_tasks"]
     concurrent_flows = data["concurrent_flows"]
-    try:
-        loop_creation_enabled, loop_accounts = validate_loop_creation(
-            data,
-            max_tasks,
-        )
-    except (TypeError, ValueError) as exc:
-        print(str(exc))
-        raise SystemExit(1)
 
     if data["choose_browser"] =="patchright":
         selected_controller = PatchrightController()
@@ -157,11 +112,6 @@ if __name__ == "__main__":
   
 
     try:
-        run_concurrent_flows(
-            selected_controller,
-            concurrent_flows,
-            max_tasks,
-            loop_accounts if loop_creation_enabled else None,
-        )
+        run_concurrent_flows(selected_controller, concurrent_flows, max_tasks)
     finally:
         selected_controller.clean_up(type="all_browser")

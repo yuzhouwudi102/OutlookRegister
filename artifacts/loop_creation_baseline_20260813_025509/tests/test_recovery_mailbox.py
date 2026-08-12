@@ -1,28 +1,20 @@
 import json
-import os
-import re
 import tempfile
 import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import Mock, mock_open, patch
+from unittest.mock import Mock, patch
 
 from authorize_recovery_mailbox import get_authorization_status
 from controllers.base_controller import BaseBrowserController
 from recovery_mailbox import (
     RecoveryMailboxClient,
-    RecoveryMailboxAccount,
-    LOOP_CREATION_ERROR,
-    build_loop_token_payload,
-    clear_and_write_loop_backup,
     extract_security_code,
     find_code_in_messages,
-    get_loop_token_file,
     list_authorized_emails,
     load_backup_accounts,
     token_file_for_email,
-    validate_loop_creation,
 )
 
 
@@ -333,202 +325,6 @@ class RecoveryMailboxTests(unittest.TestCase):
             "successful-account",
             "password",
         )
-
-    def test_loop_creation_requires_matching_task_count_and_oauth(self):
-        with tempfile.TemporaryDirectory() as directory:
-            config = build_config(directory)
-            accounts_file = Path(
-                config["recovery_mailbox"]["accounts_file"]
-            )
-            accounts_file.write_text(
-                "one@example.com: pass-one\n"
-                "two@example.com: pass-two\n",
-                encoding="utf-8",
-            )
-            config["oauth2"]["Loop Creation"] = True
-            config["oauth2"]["enable_oauth2"] = False
-
-            with self.assertRaisesRegex(
-                ValueError,
-                re.escape(LOOP_CREATION_ERROR),
-            ):
-                validate_loop_creation(config, 2)
-
-            config["oauth2"]["enable_oauth2"] = True
-            with self.assertRaisesRegex(
-                ValueError,
-                re.escape(LOOP_CREATION_ERROR),
-            ):
-                validate_loop_creation(config, 1)
-
-            enabled, accounts = validate_loop_creation(config, 2)
-            self.assertTrue(enabled)
-            self.assertEqual(
-                [account.email for account in accounts],
-                ["one@example.com", "two@example.com"],
-            )
-
-    def test_loop_creation_rotates_backup_and_token_payload(self):
-        with tempfile.TemporaryDirectory() as directory:
-            config = build_config(directory)
-            config["oauth2"]["Loop Creation"] = True
-            config["oauth2"]["enable_oauth2"] = True
-            config["oauth2"]["loop_token_file"] = str(
-                Path(directory) / "loop-token.json"
-            )
-            accounts_file = Path(
-                config["recovery_mailbox"]["accounts_file"]
-            )
-            accounts_file.write_text(
-                "old@example.com: old-password\n",
-                encoding="utf-8",
-            )
-            payload = build_loop_token_payload(
-                "new@example.com",
-                "refresh",
-                "access",
-                1234.5,
-            )
-
-            token_path = clear_and_write_loop_backup(
-                config,
-                "new@example.com",
-                "new-password",
-                payload,
-            )
-
-            self.assertEqual(
-                accounts_file.read_text(encoding="utf-8"),
-                "new@example.com: new-password\n",
-            )
-            self.assertEqual(token_path, get_loop_token_file(config))
-            self.assertEqual(
-                json.loads(token_path.read_text(encoding="utf-8")),
-                payload,
-            )
-
-    def test_loop_creation_uses_each_assigned_account_once(self):
-        import main
-
-        controller = Mock()
-        assigned = []
-
-        def record_attempt(_controller, loop_account=None):
-            assigned.append(loop_account.email)
-            return True
-
-        with patch.object(
-            main,
-            "process_single_flow",
-            side_effect=record_attempt,
-        ):
-            main.run_concurrent_flows(
-                controller,
-                concurrent_flows=2,
-                max_tasks=2,
-                loop_accounts=[
-                    RecoveryMailboxAccount(
-                        "one@example.com",
-                        "pass-one",
-                    ),
-                    RecoveryMailboxAccount(
-                        "two@example.com",
-                        "pass-two",
-                    ),
-                ],
-            )
-
-        self.assertEqual(
-            sorted(assigned),
-            ["one@example.com", "two@example.com"],
-        )
-
-    def test_loop_creation_process_persists_token_and_rotates_backup(self):
-        import main
-
-        with tempfile.TemporaryDirectory() as directory:
-            original_cwd = os.getcwd()
-            os.chdir(directory)
-            try:
-                Path("Results").mkdir()
-                accounts_file = Path("Results/backup_email.txt")
-                accounts_file.write_text(
-                    "old@example.com: old-password\n",
-                    encoding="utf-8",
-                )
-                config = {
-                    "oauth2": {
-                        "Loop Creation": True,
-                        "enable_oauth2": True,
-                        "loop_token_file": (
-                            "Results/"
-                            "tarmaobrvkuzbt_outlook.com_c8ffee6885.json"
-                        ),
-                    },
-                    "recovery_mailbox": {
-                        "accounts_file": str(accounts_file),
-                    },
-                }
-                controller = Mock()
-                controller.email_suffix = "@outlook.com"
-                controller.enable_oauth2 = True
-                controller.loop_creation_enabled = True
-                controller.loop_creation_lock = threading.Lock()
-                controller.config = config
-                controller.get_thread_page.return_value = Mock()
-                controller.outlook_register.return_value = True
-                controller.clean_up = Mock()
-
-                with patch.object(
-                    main,
-                    "random_email",
-                    return_value="created",
-                ), patch.object(
-                    main,
-                    "generate_strong_password",
-                    return_value="CreatedPassword!",
-                ), patch.object(
-                    main,
-                    "get_access_token",
-                    return_value=(
-                        "refresh-token",
-                        "access-token",
-                        1234.5,
-                    ),
-                ), patch(
-                    "builtins.open",
-                    mock_open(),
-                ):
-                    result = main.process_single_flow(
-                        controller,
-                        RecoveryMailboxAccount(
-                            "old@example.com",
-                            "old-password",
-                        ),
-                    )
-
-                self.assertTrue(result)
-                self.assertEqual(
-                    accounts_file.read_text(encoding="utf-8"),
-                    "created@outlook.com: CreatedPassword!\n",
-                )
-                loop_token = json.loads(
-                    Path(
-                        "Results/"
-                        "tarmaobrvkuzbt_outlook.com_c8ffee6885.json"
-                    ).read_text(encoding="utf-8")
-                )
-                self.assertEqual(
-                    loop_token,
-                    {
-                        "email": "created@outlook.com",
-                        "access_token": "access-token",
-                        "refresh_token": "refresh-token",
-                        "expires_at": 1234.5,
-                    },
-                )
-            finally:
-                os.chdir(original_cwd)
 
 
 if __name__ == "__main__":

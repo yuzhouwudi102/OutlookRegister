@@ -48,7 +48,6 @@
     "max_tasks": 1,
    "oauth2": {
     "enable_oauth2": false,
-    "Loop Creation": false,
     "client_id": "83266bbe-f241-4074-857f-fda88616d35a",
     "redirect_url": "http://localhost:8000",
     "Scopes": [

@@ -69,10 +69,6 @@ class BaseBrowserController(ABC):
         self.wait_time = data['bot_protection_wait'] * 1000
         self.max_captcha_retries = data['max_captcha_retries']
         self.enable_oauth2 = data["oauth2"]['enable_oauth2']
-        self.loop_creation_enabled = data["oauth2"].get(
-            "Loop Creation",
-            False,
-        )
         self.proxy = data['proxy']
         self.email_suffix = data['email_suffix']
         self.config = data
@@ -88,16 +84,12 @@ class BaseBrowserController(ABC):
         self.thread_local = threading.local()
         self.cleanup_lock = threading.Lock()
         self.results_lock = threading.Lock()
-        self.loop_creation_lock = threading.Lock()
         self.recovery_locks_guard = threading.Lock()
         self.recovery_locks = {}
         self.active_resources = []  # 记录资源以便关闭
 
         self.results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Results')
         os.makedirs(self.results_dir, exist_ok=True)
-
-    def set_loop_recovery_account(self, account):
-        self.thread_local.loop_recovery_account = account
 
     def get_browser_launch_args(self):
         if not self.fingerprint_enabled:
@@ -233,20 +225,6 @@ class BaseBrowserController(ABC):
                 break
 
     def choose_recovery_mailbox(self):
-        assigned_account = getattr(
-            getattr(self, "thread_local", None),
-            "loop_recovery_account",
-            None,
-        )
-        if assigned_account is not None:
-            account = assigned_account
-            client = RecoveryMailboxClient(
-                self.config,
-                self.proxy,
-                account=account,
-            )
-            return account, client
-
         accounts = load_backup_accounts(self.recovery_accounts_file)
         if not accounts:
             raise RuntimeError(

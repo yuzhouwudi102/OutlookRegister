@@ -25,14 +25,6 @@ DEFAULT_CODE_PATTERN = r"(?<!\d)(\d{6,8})(?!\d)"
 DEFAULT_ACCOUNTS_FILE = "Results/backup_email.txt"
 DEFAULT_TOKEN_DIR = "Results/recovery_mailbox_token"
 DEFAULT_LEGACY_TOKEN_FILE = "Results/recovery_mailbox_token.json"
-DEFAULT_LOOP_TOKEN_FILE = (
-    "Results/recovery_mailbox_token/"
-    "tarmaobrvkuzbt_outlook.com_c8ffee6885.json"
-)
-LOOP_CREATION_ERROR = (
-    '"max_tasks"的值与backup_email.txt内邮箱数不一值或且'
-    '"enable_oauth2"值不为true。'
-)
 
 
 @dataclass(frozen=True)
@@ -82,16 +74,6 @@ def get_token_dir(config):
     return Path(mailbox.get("token_dir", DEFAULT_TOKEN_DIR))
 
 
-def get_loop_token_file(config):
-    oauth2 = config.get("oauth2", {})
-    return Path(
-        oauth2.get(
-            "loop_token_file",
-            DEFAULT_LOOP_TOKEN_FILE,
-        )
-    )
-
-
 def token_file_for_email(token_dir, email):
     normalized = email.strip().lower()
     readable = re.sub(r"[^a-z0-9._-]+", "_", normalized)
@@ -123,80 +105,6 @@ def _atomic_write_json(path, payload):
     finally:
         if os.path.exists(temp_name):
             os.remove(temp_name)
-
-
-def atomic_write_text(path, text):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temp_name = tempfile.mkstemp(
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        dir=path.parent,
-    )
-    try:
-        with os.fdopen(
-            descriptor,
-            "w",
-            encoding="utf-8",
-            newline="",
-        ) as file:
-            file.write(text)
-            file.flush()
-            os.fsync(file.fileno())
-        os.replace(temp_name, path)
-    finally:
-        if os.path.exists(temp_name):
-            os.remove(temp_name)
-
-
-def build_loop_token_payload(
-    email,
-    refresh_token,
-    access_token,
-    expires_at,
-):
-    """Build the per-loop token cache format used by RecoveryMailboxClient."""
-    return {
-        "email": email.strip().lower(),
-        "access_token": access_token or "",
-        "refresh_token": refresh_token or "",
-        "expires_at": float(expires_at),
-    }
-
-
-def write_loop_token_file(config, token_payload):
-    path = get_loop_token_file(config)
-    _atomic_write_json(path, token_payload)
-    return path
-
-
-def clear_and_write_loop_backup(config, email, password, token_payload):
-    accounts_path = get_accounts_file(config)
-    atomic_write_text(
-        accounts_path,
-        f"{email.strip().lower()}: {password}\n",
-    )
-    return write_loop_token_file(config, token_payload)
-
-
-def validate_loop_creation(config, max_tasks):
-    oauth2 = config.get("oauth2", {})
-    if not oauth2.get("Loop Creation", False):
-        return False, []
-
-    accounts = load_backup_accounts(get_accounts_file(config))
-    try:
-        task_count = int(max_tasks)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(LOOP_CREATION_ERROR) from exc
-
-    if (
-        not oauth2.get("enable_oauth2", False)
-        or task_count != len(accounts)
-    ):
-        raise ValueError(LOOP_CREATION_ERROR)
-
-    return True, accounts
 
 
 def migrate_legacy_token(config):

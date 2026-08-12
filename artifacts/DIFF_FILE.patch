@@ -1,339 +1,549 @@
+diff --git a/config.json b/config.json
+index e532b43..85e672f 100644
+--- a/config.json
++++ b/config.json
+@@ -48,6 +48,7 @@
+     "max_tasks": 1,
+    "oauth2": {
+     "enable_oauth2": false,
++    "Loop Creation": false,
+     "client_id": "83266bbe-f241-4074-857f-fda88616d35a",
+     "redirect_url": "http://localhost:8000",
+     "Scopes": [
 diff --git a/controllers/base_controller.py b/controllers/base_controller.py
-index ceda88d..1df00b6 100644
+index 1df00b6..1b09c3f 100644
 --- a/controllers/base_controller.py
 +++ b/controllers/base_controller.py
-@@ -435,6 +435,15 @@ class BaseBrowserController(ABC):
-             print('[Error: Timeout] - 邮箱未初始化，无法正常收件。')
-             return False
+@@ -69,6 +69,10 @@ class BaseBrowserController(ABC):
+         self.wait_time = data['bot_protection_wait'] * 1000
+         self.max_captcha_retries = data['max_captcha_retries']
+         self.enable_oauth2 = data["oauth2"]['enable_oauth2']
++        self.loop_creation_enabled = data["oauth2"].get(
++            "Loop Creation",
++            False,
++        )
+         self.proxy = data['proxy']
+         self.email_suffix = data['email_suffix']
+         self.config = data
+@@ -84,6 +88,7 @@ class BaseBrowserController(ABC):
+         self.thread_local = threading.local()
+         self.cleanup_lock = threading.Lock()
+         self.results_lock = threading.Lock()
++        self.loop_creation_lock = threading.Lock()
+         self.recovery_locks_guard = threading.Lock()
+         self.recovery_locks = {}
+         self.active_resources = []  # 记录资源以便关闭
+@@ -91,6 +96,9 @@ class BaseBrowserController(ABC):
+         self.results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Results')
+         os.makedirs(self.results_dir, exist_ok=True)
  
-+    def finalize_registered_account(self, page, email, password):
-+        full_email = f"{email}{self.email_suffix}"
-+        if not self.complete_post_registration(page, full_email):
-+            return False
++    def set_loop_recovery_account(self, account):
++        self.thread_local.loop_recovery_account = account
 +
-+        self.save_registered_account(email, password)
-+        print(f'[Success: Email Registration] - {full_email}')
-+        return True
-+
-     @abstractmethod
-     def launch_browser(self):
-         """
-@@ -758,10 +767,8 @@ class BaseBrowserController(ABC):
-             print(f"[Error: Signup Flow] - Signup page handling failed: {exc}")
-             return False
+     def get_browser_launch_args(self):
+         if not self.fingerprint_enabled:
+             return ['--lang=zh-CN']
+@@ -225,6 +233,20 @@ class BaseBrowserController(ABC):
+                 break
  
--        self.save_registered_account(email, password)
--        print(f'[Success: Email Registration] - {email}{self.email_suffix}: {password}')
--
--        return self.complete_post_registration(
-+        return self.finalize_registered_account(
-             page,
--            f"{email}{self.email_suffix}",
-+            email,
-+            password,
-         )
-diff --git a/controllers/patchright_controller.py b/controllers/patchright_controller.py
-index cca8c67..186f195 100644
---- a/controllers/patchright_controller.py
-+++ b/controllers/patchright_controller.py
-@@ -1,4 +1,5 @@
- import random
-+import time
- from patchright.sync_api import sync_playwright
- from .base_controller import BaseBrowserController
- 
-@@ -28,6 +29,12 @@ class PatchrightController(BaseBrowserController):
-         
-     def handle_captcha(self, page):
- 
-+        challenge_iframe = page.locator(
-+            'iframe[title="验证质询"], '
-+            'iframe[title="Verification challenge"]'
-+        ).first
-+        challenge_iframe.wait_for(state="visible", timeout=22000)
-+
-         frame1 = page.frame_locator(
-             'iframe[title="验证质询"], '
-             'iframe[title="Verification challenge"]'
-@@ -35,7 +42,9 @@ class PatchrightController(BaseBrowserController):
-         frame2 = frame1.frame_locator('iframe[style*="display: block"]')
-         challenge_selector = (
-             '[aria-label="可访问性挑战"], '
--            '[aria-label="Accessibility Challenge"]'
-+            '[aria-label="Accessibility Challenge"], '
-+            '[aria-label="Accessible challenge"], '
-+            '[aria-label*="accessible challenge" i]'
-         )
-         press_again_selector = (
-             '[aria-label="再次按下"], '
-@@ -46,15 +55,142 @@ class PatchrightController(BaseBrowserController):
-             '[role="status"][aria-label="Loading..."]'
-         )
- 
-+        def first_visible(locator):
-+            try:
-+                count = locator.count()
-+            except Exception:
-+                return None
-+            for index in range(min(count, 20)):
-+                candidate = locator.nth(index)
-+                try:
-+                    if candidate.is_visible():
-+                        return candidate
-+                except Exception:
-+                    continue
-+            return None
-+
-+        def wait_first_visible(locators, timeout=8000):
-+            deadline = time.monotonic() + timeout / 1000
-+            while time.monotonic() < deadline:
-+                for locator in locators:
-+                    candidate = first_visible(locator)
-+                    if candidate is not None:
-+                        return candidate
-+                page.wait_for_timeout(200)
-+            return None
-+
-+        def click_accessibility_challenge():
-+            locators = (
-+                frame2.locator(challenge_selector),
-+                frame2.get_by_text(
-+                    "Accessible challenge",
-+                    exact=True,
-+                ),
-+                frame2.get_by_text(
-+                    "Accessibility Challenge",
-+                    exact=True,
-+                ),
-+                frame1.get_by_text(
-+                    "Accessible challenge",
-+                    exact=True,
-+                ),
-+                frame1.get_by_text(
-+                    "Accessibility Challenge",
-+                    exact=True,
-+                ),
-+                frame1.get_by_text(
-+                    "可访问性挑战",
-+                    exact=True,
-+                ),
+     def choose_recovery_mailbox(self):
++        assigned_account = getattr(
++            getattr(self, "thread_local", None),
++            "loop_recovery_account",
++            None,
++        )
++        if assigned_account is not None:
++            account = assigned_account
++            client = RecoveryMailboxClient(
++                self.config,
++                self.proxy,
++                account=account,
 +            )
-+            candidate = wait_first_visible(locators)
-+            if candidate is None:
-+                return False
-+            try:
-+                candidate.scroll_into_view_if_needed()
-+            except Exception:
-+                pass
-+            try:
-+                candidate.click(timeout=5000)
-+            except Exception:
-+                candidate.click(timeout=5000, force=True)
-+            return True
++            return account, client
 +
-+        def press_and_hold():
-+            locators = (
-+                frame2.locator(
-+                    '[aria-label="Press and hold"], '
-+                    '[aria-label="按住"]'
-+                ),
-+                frame2.get_by_text(
-+                    "Press and hold",
-+                    exact=True,
-+                ),
-+                frame2.get_by_text(
-+                    "按住",
-+                    exact=True,
-+                ),
-+                frame1.get_by_text(
-+                    "Press and hold",
-+                    exact=True,
-+                ),
-+                frame1.get_by_text(
-+                    "按住",
-+                    exact=True,
-+                ),
-+            )
-+            candidate = wait_first_visible(locators)
-+            if candidate is None:
-+                return False
-+            box = candidate.bounding_box()
-+            if not box:
-+                return False
-+            tx = box["x"] + box["width"] / 2
-+            ty = box["y"] + box["height"] / 2
-+            self.smooth_move_to(page, tx, ty)
-+            page.mouse.move(tx, ty)
-+            page.mouse.down()
-+            try:
-+                started_at = time.monotonic()
-+                hold_deadline = started_at + 14
-+                minimum_release = started_at + 1.8
-+                while time.monotonic() < hold_deadline:
-+                    page.wait_for_timeout(250)
-+                    now = time.monotonic()
-+                    if now < minimum_release:
-+                        continue
-+                    try:
-+                        if not candidate.is_visible():
-+                            break
-+                    except Exception:
-+                        break
-+                    if (
-+                        page.get_by_text("暂时跳过").count() > 0
-+                        or page.get_by_text(
-+                            "Skip for now",
-+                            exact=False,
-+                        ).count() > 0
-+                    ):
-+                        break
-+            finally:
-+                page.mouse.up()
-+            self.set_last_pos(tx, ty)
-+            return True
-+
-         for _ in range(0, self.max_captcha_retries + 1):
- 
-             page.wait_for_timeout(random.randint(250, 450))
--            loc = frame2.locator(challenge_selector).first
--            self.smooth_click(page, loc)
-+            if not click_accessibility_challenge():
-+                return False
- 
-             page.wait_for_timeout(random.randint(300, 600))
--            loc2 = frame2.locator(press_again_selector).first
--            self.smooth_click(page, loc2)
-+            if not press_and_hold():
-+                loc2 = first_visible(
-+                    frame2.locator(press_again_selector)
-+                )
-+                if loc2 is None:
-+                    return False
-+                loc2.click(timeout=5000)
- 
-             try:
-                 page.locator('.draw').wait_for(state="detached", timeout=14000)
-@@ -67,7 +203,12 @@ class PatchrightController(BaseBrowserController):
-                         if page.get_by_text('一些异常活动').count() or page.get_by_text('此站点正在维护，暂时无法使用，请稍后重试。').count() > 0:
-                             print("[Error: Rate limit] - 正常通过验证码，但当前IP注册频率过快。")
-                             return False
--                        elif frame2.locator(challenge_selector).count() > 0:
-+                        elif (
-+                            first_visible(
-+                                frame2.locator(challenge_selector)
-+                            )
-+                            is not None
-+                        ):
-                             captcha_passed = False
-                             page.wait_for_timeout(random.randint(500, 1000))
-                             break
-@@ -82,7 +223,12 @@ class PatchrightController(BaseBrowserController):
-                             break
-                         page.wait_for_timeout(random.randint(375, 425))
-                     else:
--                        if frame2.locator(challenge_selector).count() == 0:
-+                        if (
-+                            first_visible(
-+                                frame2.locator(challenge_selector)
-+                            )
-+                            is None
-+                        ):
-                             captcha_passed = True
- 
-                     if captcha_passed:
+         accounts = load_backup_accounts(self.recovery_accounts_file)
+         if not accounts:
+             raise RuntimeError(
 diff --git a/main.py b/main.py
-index 80458b2..b3d05c5 100644
+index b3d05c5..3644aaa 100644
 --- a/main.py
 +++ b/main.py
-@@ -19,12 +19,19 @@ from controllers.playwright_controller import PlaywrightController
+@@ -6,6 +6,11 @@ from concurrent.futures import ThreadPoolExecutor
+ from utils import random_email, generate_strong_password
+ from controllers.patchright_controller import PatchrightController
+ from controllers.playwright_controller import PlaywrightController
++from recovery_mailbox import (
++    build_loop_token_payload,
++    clear_and_write_loop_backup,
++    validate_loop_creation,
++)
  
- def process_single_flow(controller):
+ 
+ 
+@@ -17,7 +22,7 @@ from controllers.playwright_controller import PlaywrightController
+ # 4. 模拟真人轨迹
+ # 时区
+ 
+-def process_single_flow(controller):
++def process_single_flow(controller, loop_account=None):
      page = None
-+    email = None
-+    password = None
+     email = None
+     password = None
+@@ -31,6 +36,9 @@ def process_single_flow(controller):
+             flush=True,
+         )
  
-     try:
--        page = controller.get_thread_page()
--
-         email = random_email()
-         password = generate_strong_password()
-+        print(
-+            f"[Attempt: Email Registration] - "
-+            f"{email}{controller.email_suffix}: {password}",
-+            flush=True,
-+        )
++        if loop_account is not None:
++            controller.set_loop_recovery_account(loop_account)
 +
-+        page = controller.get_thread_page()
+         page = controller.get_thread_page()
  
          # 调用 controller 特定的注册方法 
-         result = controller.outlook_register(page, email, password)
-@@ -107,4 +114,4 @@ if __name__ == "__main__":
+@@ -47,6 +55,21 @@ def process_single_flow(controller):
+             with open(os.path.join(os.path.dirname(__file__), 'Results', 'outlook_token.txt'), 'a', encoding='utf-8') as f2:
+                 f2.write(f"{email}{controller.email_suffix}---{password}---{refresh_token}---{access_token}---{expire_at}\n") 
+             print(f'[Success: TokenAuth] - {email}{controller.email_suffix}')
++
++            if controller.loop_creation_enabled:
++                token_payload = build_loop_token_payload(
++                    f"{email}{controller.email_suffix}",
++                    refresh_token,
++                    access_token,
++                    expire_at,
++                )
++                with controller.loop_creation_lock:
++                    clear_and_write_loop_backup(
++                        controller.config,
++                        f"{email}{controller.email_suffix}",
++                        password,
++                        token_payload,
++                    )
+             return True
+         else:
+             return False
+@@ -59,7 +82,12 @@ def process_single_flow(controller):
+ 
+         controller.clean_up(page, "done_browser")
+ 
+-def run_concurrent_flows(controller, concurrent_flows=10, max_tasks=100):
++def run_concurrent_flows(
++    controller,
++    concurrent_flows=10,
++    max_tasks=100,
++    loop_accounts=None,
++):
+     task_counter = 0
+     succeeded_tasks = 0
+     failed_tasks = 0
+@@ -81,7 +109,16 @@ def run_concurrent_flows(controller, concurrent_flows=10, max_tasks=100):
+                 running_futures.remove(future)
+ 
+             while len(running_futures) < concurrent_flows and task_counter < max_tasks:
+-                new_future = executor.submit(process_single_flow, controller)
++                loop_account = (
++                    loop_accounts[task_counter]
++                    if loop_accounts is not None
++                    else None
++                )
++                new_future = executor.submit(
++                    process_single_flow,
++                    controller,
++                    loop_account,
++                )
+                 running_futures.add(new_future)
+                 task_counter += 1
+                 if max_tasks > 1 and task_counter % (max_tasks // 2) == 0:
+@@ -102,6 +139,14 @@ if __name__ == "__main__":
+ 
+     max_tasks = data["max_tasks"]
+     concurrent_flows = data["concurrent_flows"]
++    try:
++        loop_creation_enabled, loop_accounts = validate_loop_creation(
++            data,
++            max_tasks,
++        )
++    except (TypeError, ValueError) as exc:
++        print(str(exc))
++        raise SystemExit(1)
+ 
+     if data["choose_browser"] =="patchright":
+         selected_controller = PatchrightController()
+@@ -112,6 +157,11 @@ if __name__ == "__main__":
+   
+ 
      try:
-         run_concurrent_flows(selected_controller, concurrent_flows, max_tasks)
+-        run_concurrent_flows(selected_controller, concurrent_flows, max_tasks)
++        run_concurrent_flows(
++            selected_controller,
++            concurrent_flows,
++            max_tasks,
++            loop_accounts if loop_creation_enabled else None,
++        )
      finally:
--        selected_controller.clean_up(type="all_browser")
-\ No newline at end of file
-+        selected_controller.clean_up(type="all_browser")
+         selected_controller.clean_up(type="all_browser")
+diff --git a/readme.md b/readme.md
+index 5fd7d03..587d11b 100644
+--- a/readme.md
++++ b/readme.md
+@@ -8,6 +8,7 @@
+ 5. `Results/unlogged_email.txt` 只保存关闭新邮箱 OAuth 时注册成功的邮箱，不再用于备用邮箱。
+ 6. `oauth2.enable_oauth2=false` 只关闭新注册邮箱的令牌获取；备用邮箱填写和自动取码流程仍会继续执行，账号密码会立即写入 `Results/unlogged_email.txt`。
+ 7. `fingerprint.enabled=true` 会让 Patchright、Playwright 和授权浏览器共用有头指纹上下文；`fingerprint.headless=false` 固定关闭无头模式。Playwright 默认使用本机 Edge 路径。
++8. 如需启用循环创建模式，在 `oauth2` 中设置 `"Loop Creation": true`，并确保 `max_tasks` 等于 `Results/backup_email.txt` 中的备用邮箱数量，同时 `enable_oauth2` 必须为 `true`。每个任务按顺序使用不同备用邮箱；成功取得新邮箱令牌后，程序会将成功账号和令牌轮换写回备用邮箱文件及 `tarmaobrvkuzbt_outlook.com_c8ffee6885.json`。
+ Outlook 注册机  
+ 选择器经常更新，不保证时效性，自行测试。 
+ 
+diff --git a/recovery_mailbox.py b/recovery_mailbox.py
+index 4ecb95e..f0a050b 100644
+--- a/recovery_mailbox.py
++++ b/recovery_mailbox.py
+@@ -25,6 +25,14 @@ DEFAULT_CODE_PATTERN = r"(?<!\d)(\d{6,8})(?!\d)"
+ DEFAULT_ACCOUNTS_FILE = "Results/backup_email.txt"
+ DEFAULT_TOKEN_DIR = "Results/recovery_mailbox_token"
+ DEFAULT_LEGACY_TOKEN_FILE = "Results/recovery_mailbox_token.json"
++DEFAULT_LOOP_TOKEN_FILE = (
++    "Results/recovery_mailbox_token/"
++    "tarmaobrvkuzbt_outlook.com_c8ffee6885.json"
++)
++LOOP_CREATION_ERROR = (
++    '"max_tasks"的值与backup_email.txt内邮箱数不一值或且'
++    '"enable_oauth2"值不为true。'
++)
+ 
+ 
+ @dataclass(frozen=True)
+@@ -74,6 +82,16 @@ def get_token_dir(config):
+     return Path(mailbox.get("token_dir", DEFAULT_TOKEN_DIR))
+ 
+ 
++def get_loop_token_file(config):
++    oauth2 = config.get("oauth2", {})
++    return Path(
++        oauth2.get(
++            "loop_token_file",
++            DEFAULT_LOOP_TOKEN_FILE,
++        )
++    )
++
++
+ def token_file_for_email(token_dir, email):
+     normalized = email.strip().lower()
+     readable = re.sub(r"[^a-z0-9._-]+", "_", normalized)
+@@ -107,6 +125,80 @@ def _atomic_write_json(path, payload):
+             os.remove(temp_name)
+ 
+ 
++def atomic_write_text(path, text):
++    path = Path(path)
++    path.parent.mkdir(parents=True, exist_ok=True)
++    descriptor, temp_name = tempfile.mkstemp(
++        prefix=f".{path.name}.",
++        suffix=".tmp",
++        dir=path.parent,
++    )
++    try:
++        with os.fdopen(
++            descriptor,
++            "w",
++            encoding="utf-8",
++            newline="",
++        ) as file:
++            file.write(text)
++            file.flush()
++            os.fsync(file.fileno())
++        os.replace(temp_name, path)
++    finally:
++        if os.path.exists(temp_name):
++            os.remove(temp_name)
++
++
++def build_loop_token_payload(
++    email,
++    refresh_token,
++    access_token,
++    expires_at,
++):
++    """Build the per-loop token cache format used by RecoveryMailboxClient."""
++    return {
++        "email": email.strip().lower(),
++        "access_token": access_token or "",
++        "refresh_token": refresh_token or "",
++        "expires_at": float(expires_at),
++    }
++
++
++def write_loop_token_file(config, token_payload):
++    path = get_loop_token_file(config)
++    _atomic_write_json(path, token_payload)
++    return path
++
++
++def clear_and_write_loop_backup(config, email, password, token_payload):
++    accounts_path = get_accounts_file(config)
++    atomic_write_text(
++        accounts_path,
++        f"{email.strip().lower()}: {password}\n",
++    )
++    return write_loop_token_file(config, token_payload)
++
++
++def validate_loop_creation(config, max_tasks):
++    oauth2 = config.get("oauth2", {})
++    if not oauth2.get("Loop Creation", False):
++        return False, []
++
++    accounts = load_backup_accounts(get_accounts_file(config))
++    try:
++        task_count = int(max_tasks)
++    except (TypeError, ValueError) as exc:
++        raise ValueError(LOOP_CREATION_ERROR) from exc
++
++    if (
++        not oauth2.get("enable_oauth2", False)
++        or task_count != len(accounts)
++    ):
++        raise ValueError(LOOP_CREATION_ERROR)
++
++    return True, accounts
++
++
+ def migrate_legacy_token(config):
+     mailbox = config.get("recovery_mailbox", {})
+     legacy_path = Path(
 diff --git a/tests/test_recovery_mailbox.py b/tests/test_recovery_mailbox.py
-index b292949..57e88c0 100644
+index 57e88c0..a02607b 100644
 --- a/tests/test_recovery_mailbox.py
 +++ b/tests/test_recovery_mailbox.py
-@@ -289,6 +289,43 @@ class RecoveryMailboxTests(unittest.TestCase):
-         )
-         self.assertEqual(page.inbox.timeout, 60000)
+@@ -1,20 +1,28 @@
+ import json
++import os
++import re
+ import tempfile
+ import threading
+ import unittest
+ from datetime import datetime, timedelta, timezone
+ from pathlib import Path
+-from unittest.mock import Mock, patch
++from unittest.mock import Mock, mock_open, patch
  
-+    def test_failed_post_registration_is_not_saved(self):
-+        controller = object.__new__(DummyController)
-+        controller.email_suffix = "@outlook.com"
-+        controller.complete_post_registration = Mock(
-+            return_value=False
-+        )
-+        controller.save_registered_account = Mock()
+ from authorize_recovery_mailbox import get_authorization_status
+ from controllers.base_controller import BaseBrowserController
+ from recovery_mailbox import (
+     RecoveryMailboxClient,
++    RecoveryMailboxAccount,
++    LOOP_CREATION_ERROR,
++    build_loop_token_payload,
++    clear_and_write_loop_backup,
+     extract_security_code,
+     find_code_in_messages,
++    get_loop_token_file,
+     list_authorized_emails,
+     load_backup_accounts,
+     token_file_for_email,
++    validate_loop_creation,
+ )
+ 
+ 
+@@ -326,6 +334,202 @@ class RecoveryMailboxTests(unittest.TestCase):
+             "password",
+         )
+ 
++    def test_loop_creation_requires_matching_task_count_and_oauth(self):
++        with tempfile.TemporaryDirectory() as directory:
++            config = build_config(directory)
++            accounts_file = Path(
++                config["recovery_mailbox"]["accounts_file"]
++            )
++            accounts_file.write_text(
++                "one@example.com: pass-one\n"
++                "two@example.com: pass-two\n",
++                encoding="utf-8",
++            )
++            config["oauth2"]["Loop Creation"] = True
++            config["oauth2"]["enable_oauth2"] = False
 +
-+        result = controller.finalize_registered_account(
-+            Mock(),
-+            "failed-account",
-+            "password",
++            with self.assertRaisesRegex(
++                ValueError,
++                re.escape(LOOP_CREATION_ERROR),
++            ):
++                validate_loop_creation(config, 2)
++
++            config["oauth2"]["enable_oauth2"] = True
++            with self.assertRaisesRegex(
++                ValueError,
++                re.escape(LOOP_CREATION_ERROR),
++            ):
++                validate_loop_creation(config, 1)
++
++            enabled, accounts = validate_loop_creation(config, 2)
++            self.assertTrue(enabled)
++            self.assertEqual(
++                [account.email for account in accounts],
++                ["one@example.com", "two@example.com"],
++            )
++
++    def test_loop_creation_rotates_backup_and_token_payload(self):
++        with tempfile.TemporaryDirectory() as directory:
++            config = build_config(directory)
++            config["oauth2"]["Loop Creation"] = True
++            config["oauth2"]["enable_oauth2"] = True
++            config["oauth2"]["loop_token_file"] = str(
++                Path(directory) / "loop-token.json"
++            )
++            accounts_file = Path(
++                config["recovery_mailbox"]["accounts_file"]
++            )
++            accounts_file.write_text(
++                "old@example.com: old-password\n",
++                encoding="utf-8",
++            )
++            payload = build_loop_token_payload(
++                "new@example.com",
++                "refresh",
++                "access",
++                1234.5,
++            )
++
++            token_path = clear_and_write_loop_backup(
++                config,
++                "new@example.com",
++                "new-password",
++                payload,
++            )
++
++            self.assertEqual(
++                accounts_file.read_text(encoding="utf-8"),
++                "new@example.com: new-password\n",
++            )
++            self.assertEqual(token_path, get_loop_token_file(config))
++            self.assertEqual(
++                json.loads(token_path.read_text(encoding="utf-8")),
++                payload,
++            )
++
++    def test_loop_creation_uses_each_assigned_account_once(self):
++        import main
++
++        controller = Mock()
++        assigned = []
++
++        def record_attempt(_controller, loop_account=None):
++            assigned.append(loop_account.email)
++            return True
++
++        with patch.object(
++            main,
++            "process_single_flow",
++            side_effect=record_attempt,
++        ):
++            main.run_concurrent_flows(
++                controller,
++                concurrent_flows=2,
++                max_tasks=2,
++                loop_accounts=[
++                    RecoveryMailboxAccount(
++                        "one@example.com",
++                        "pass-one",
++                    ),
++                    RecoveryMailboxAccount(
++                        "two@example.com",
++                        "pass-two",
++                    ),
++                ],
++            )
++
++        self.assertEqual(
++            sorted(assigned),
++            ["one@example.com", "two@example.com"],
 +        )
 +
-+        self.assertFalse(result)
-+        controller.save_registered_account.assert_not_called()
++    def test_loop_creation_process_persists_token_and_rotates_backup(self):
++        import main
 +
-+    def test_successful_post_registration_is_saved(self):
-+        controller = object.__new__(DummyController)
-+        controller.email_suffix = "@outlook.com"
-+        controller.complete_post_registration = Mock(
-+            return_value=True
-+        )
-+        controller.save_registered_account = Mock()
++        with tempfile.TemporaryDirectory() as directory:
++            original_cwd = os.getcwd()
++            os.chdir(directory)
++            try:
++                Path("Results").mkdir()
++                accounts_file = Path("Results/backup_email.txt")
++                accounts_file.write_text(
++                    "old@example.com: old-password\n",
++                    encoding="utf-8",
++                )
++                config = {
++                    "oauth2": {
++                        "Loop Creation": True,
++                        "enable_oauth2": True,
++                        "loop_token_file": (
++                            "Results/"
++                            "tarmaobrvkuzbt_outlook.com_c8ffee6885.json"
++                        ),
++                    },
++                    "recovery_mailbox": {
++                        "accounts_file": str(accounts_file),
++                    },
++                }
++                controller = Mock()
++                controller.email_suffix = "@outlook.com"
++                controller.enable_oauth2 = True
++                controller.loop_creation_enabled = True
++                controller.loop_creation_lock = threading.Lock()
++                controller.config = config
++                controller.get_thread_page.return_value = Mock()
++                controller.outlook_register.return_value = True
++                controller.clean_up = Mock()
 +
-+        result = controller.finalize_registered_account(
-+            Mock(),
-+            "successful-account",
-+            "password",
-+        )
++                with patch.object(
++                    main,
++                    "random_email",
++                    return_value="created",
++                ), patch.object(
++                    main,
++                    "generate_strong_password",
++                    return_value="CreatedPassword!",
++                ), patch.object(
++                    main,
++                    "get_access_token",
++                    return_value=(
++                        "refresh-token",
++                        "access-token",
++                        1234.5,
++                    ),
++                ), patch(
++                    "builtins.open",
++                    mock_open(),
++                ):
++                    result = main.process_single_flow(
++                        controller,
++                        RecoveryMailboxAccount(
++                            "old@example.com",
++                            "old-password",
++                        ),
++                    )
 +
-+        self.assertTrue(result)
-+        controller.save_registered_account.assert_called_once_with(
-+            "successful-account",
-+            "password",
-+        )
++                self.assertTrue(result)
++                self.assertEqual(
++                    accounts_file.read_text(encoding="utf-8"),
++                    "created@outlook.com: CreatedPassword!\n",
++                )
++                loop_token = json.loads(
++                    Path(
++                        "Results/"
++                        "tarmaobrvkuzbt_outlook.com_c8ffee6885.json"
++                    ).read_text(encoding="utf-8")
++                )
++                self.assertEqual(
++                    loop_token,
++                    {
++                        "email": "created@outlook.com",
++                        "access_token": "access-token",
++                        "refresh_token": "refresh-token",
++                        "expires_at": 1234.5,
++                    },
++                )
++            finally:
++                os.chdir(original_cwd)
 +
  
  if __name__ == "__main__":
      unittest.main()
-diff --git a/tests/test_signup_flow.py b/tests/test_signup_flow.py
-index 2bf7162..77cc5ee 100644
---- a/tests/test_signup_flow.py
-+++ b/tests/test_signup_flow.py
-@@ -35,6 +35,10 @@ class SignupFlowTests(unittest.TestCase):
-         self.assertIn('[aria-label="Accessibility Challenge"]', source)
-         self.assertIn('[aria-label="再次按下"]', source)
-         self.assertIn('[aria-label="Press again"]', source)
-+        self.assertIn("Accessible challenge", source)
-+        self.assertIn("Press and hold", source)
-+        self.assertIn("page.mouse.down()", source)
-+        self.assertIn("page.mouse.up()", source)
-         self.assertIn("Skip for now", source)
- 
-     def test_post_registration_keeps_result_updata1_flow_with_english_labels(self):

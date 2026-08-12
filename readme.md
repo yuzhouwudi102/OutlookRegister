@@ -8,6 +8,7 @@
 5. `Results/unlogged_email.txt` 只保存关闭新邮箱 OAuth 时注册成功的邮箱，不再用于备用邮箱。
 6. `oauth2.enable_oauth2=false` 只关闭新注册邮箱的令牌获取；备用邮箱填写和自动取码流程仍会继续执行，账号密码会立即写入 `Results/unlogged_email.txt`。
 7. `fingerprint.enabled=true` 会让 Patchright、Playwright 和授权浏览器共用有头指纹上下文；`fingerprint.headless=false` 固定关闭无头模式。Playwright 默认使用本机 Edge 路径。
+8. 如需启用循环创建模式，在 `oauth2` 中设置 `"Loop Creation": true`，并确保 `max_tasks` 等于 `Results/backup_email.txt` 中的备用邮箱数量，同时 `enable_oauth2` 必须为 `true`。每个任务按顺序使用不同备用邮箱；成功取得新邮箱令牌后，程序会将成功账号和令牌轮换写回备用邮箱文件及 `tarmaobrvkuzbt_outlook.com_c8ffee6885.json`。
 Outlook 注册机  
 选择器经常更新，不保证时效性，自行测试。 
 
