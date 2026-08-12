@@ -1,11 +1,11 @@
-CHANGED_BRANCH:
-browser_fingerprint.py -> shared coherent Windows fingerprint profile, runtime overrides, WebGL profile, viewport, locale, timezone and launch arguments
-config.json -> fingerprint.enabled=true, fingerprint.headless=false, US locale/timezone/geolocation, Playwright Edge executable path
-controllers/base_controller.py -> shared fingerprint context/page creation and headless=False enforcement
-controllers/patchright_controller.py -> shared fingerprint launch arguments and context
-controllers/playwright_controller.py -> shared fingerprint launch arguments, context and Edge executable fallback path
-recovery_mailbox.py -> fingerprint context/runtime profile support for OAuth authorization
-authorize_recovery_mailbox.py -> fingerprinted visible authorization browser
+﻿CHANGED_BRANCH:
+controllers/base_controller.py -> signup page detection and selector handling
+
+CHANGED_FIELDS:
+- Skip the legacy consent-button wait when the current signup page already shows the New email field.
+- Recognize current English signup controls: email, password, Next, birth year/month/day, first name, and last name.
+- Use visible-element polling and native select_option for birthday dropdowns.
+- Preserve headful mode and existing captcha/recovery flow.
 
 ARTIFACT_PATHS:
 MODIFIED_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\MODIFIED_FILE.py
@@ -13,70 +13,60 @@ DIFF_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\DIFF_F
 VERIFICATION_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\VERIFICATION.txt
 ROLLBACK_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main\artifacts\ROLLBACK.sh
 
-BASELINE_HASHES:
-config.json=3EB6B853D0497FC073FA5ED8293EDFB6D739B9A576AD893B8A48976D40CE5150
-controllers/base_controller.py=6794400AA35A081BDD2FB1297292E1166201DF1236C694843FE5CE8E655DB32B
-controllers/patchright_controller.py=90FC61D4097C2881DBEA2426FC14B4F5C5D7963B0941B4E0259F49242B8AA31E
-controllers/playwright_controller.py=BBAB460B25DAE78DE23C98804FABD3A18BEC8122B106C42F2156DDDFEA47C204
-authorize_recovery_mailbox.py=37E0A001A1AA395C92F84F0367A3B6E303AD4414DBF4D68FB8CF3ECB1A4931FF
-recovery_mailbox.py=623BC8CDCC1B0F58B5E711725BEAD6A9196C79037CEC4C268F19DEB265C85F18
-main.py=63FBBA1778B0FC26285AE2F624894D93A5F4146A63D204F65C6041DBDD1E32B0
+SOURCE_PATH:
+E:\agent worktable\gpt free plan\OutlookRegister-main\controllers\base_controller.py
+
+HASHES:
+BASELINE_SHA256=EEBC5D56AACF6A7B32DB3C28D0888EA4183FD87B3062B390E982000F949601FB
+MODIFIED_SHA256=9B03BCA21E06C0937DE29D2F95AA535C99B65F7A5DA476F06FB0BE99EDDF52FE
 
 BASELINE:
 COMMAND:
-.\.venv\Scripts\python.exe -m py_compile main.py controllers\base_controller.py controllers\patchright_controller.py controllers\playwright_controller.py authorize_recovery_mailbox.py recovery_mailbox.py
+.\.venv\Scripts\python.exe -m py_compile artifacts\signup_baseline\base_controller.py
 INPUT:
-Pre-fingerprint controller files, with headless=False launch calls but no shared fingerprint context.
+Pre-change controllers/base_controller.py copied from HEAD.
 LITERAL_OUTPUT:
-BASELINE_EXIT=0
+BASELINE_COMPILE_EXIT=0
 RESULT:
 exit status 0; baseline syntax check passed.
 
 MODIFIED:
 COMMAND:
-.\.venv\Scripts\python.exe -m py_compile main.py browser_fingerprint.py controllers\base_controller.py controllers\patchright_controller.py controllers\playwright_controller.py recovery_mailbox.py authorize_recovery_mailbox.py tests\test_browser_fingerprint.py tests\test_recovery_mailbox.py
+.\.venv\Scripts\python.exe -m py_compile controllers\base_controller.py
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 INPUT:
-Shared fingerprint module, both browser controllers, authorization browser, Playwright Edge path, and thirteen local tests.
+Updated signup flow with current English-page selectors and direct New email detection.
 LITERAL_OUTPUT:
-PY_COMPILE_EXIT=0
+MODIFIED_COMPILE_EXIT=0
 Ran 13 tests in 0.041s
 OK
+MODIFIED_TEST_EXIT=0
 RESULT:
-exit status 0; modified syntax and all thirteen tests passed.
+exit status 0; modified syntax check and all 13 local tests passed.
 
 RUNTIME_DIAGNOSTIC:
 COMMAND:
-Start Patchright and Playwright visibly, open about:blank, evaluate fingerprint fields, then close both browsers.
+Start Patchright visibly, navigate to https://outlook.live.com/mail/0/?prompt=create_account, and poll the current email selectors.
 INPUT:
 Current config.json with fingerprint.enabled=true and fingerprint.headless=false.
 LITERAL_OUTPUT:
-PATCHRIGHT profileId=07b8e4ef2f02
-PATCHRIGHT webdriver=null
-PATCHRIGHT hardwareConcurrency=12
-PATCHRIGHT deviceMemory=4
-PATCHRIGHT timezone=America/Los_Angeles
-PATCHRIGHT_HEADLESS_UA=False
-PLAYWRIGHT profileId=4494a25da727
-PLAYWRIGHT webdriver=null
-PLAYWRIGHT hardwareConcurrency=8
-PLAYWRIGHT deviceMemory=8
-PLAYWRIGHT timezone=America/Los_Angeles
-PLAYWRIGHT_HEADLESS_UA=False
+[Browser: Fingerprint] - id=496c9c0c513f, locale=en-US, timezone=America/Los_Angeles, viewport=1365x768, headless=False
+EMAIL_SELECTOR=input[type="email"]
+EMAIL_VISIBLE=True
+HEADLESS=False
 RESULT:
-exit status 0; both visible browser paths used the shared fingerprint context and neither emitted a HeadlessChrome user agent.
+exit status 0; the screenshot page exposes a visible email field and the updated flow can proceed without waiting for the old consent text.
 
 ROLLBACK:
 COMMAND:
-artifacts\ROLLBACK.sh artifacts/rollback-test-fingerprint/base_controller.py artifacts/fingerprint_baseline/base_controller.py
-.\.venv\Scripts\python.exe -m py_compile artifacts\rollback-test-fingerprint\base_controller.py
+sh artifacts/ROLLBACK.sh artifacts/rollback-test-signup/base_controller.py artifacts/signup_baseline/base_controller.py
+.\.venv\Scripts\python.exe -m py_compile artifacts\rollback-test-signup\base_controller.py
 INPUT:
-A separate copy of the modified base controller and the preserved pre-fingerprint base controller.
+A separate copy of the modified controller and the preserved baseline controller.
 LITERAL_OUTPUT:
-RESTORED target=artifacts/rollback-test-fingerprint/base_controller.py from=artifacts/fingerprint_baseline/base_controller.py
+RESTORED target=artifacts/rollback-test-signup/base_controller.py from=artifacts/signup_baseline/base_controller.py
+ROLLBACK_HASH=EEBC5D56AACF6A7B32DB3C28D0888EA4183FD87B3062B390E982000F949601FB
 ROLLBACK_EXIT=0
-RESTORED_HASH=6794400AA35A081BDD2FB1297292E1166201DF1236C694843FE5CE8E655DB32B
-BASELINE_HASH=6794400AA35A081BDD2FB1297292E1166201DF1236C694843FE5CE8E655DB32B
 ROLLBACK_COMPILE_EXIT=0
 RESULT:
-exit status 0; the separate copy restored byte-for-byte to the pre-fingerprint controller and compiled. The working tree remains fingerprint-enabled and headful.
+exit status 0; rollback restored the separate copy byte-for-byte and the restored copy compiled. The working controller and MODIFIED_FILE remain on the changed branch.
