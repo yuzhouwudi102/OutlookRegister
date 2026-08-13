@@ -1,0 +1,22 @@
+﻿Changed branch: PatchrightController.handle_captcha
+Changed flow: iframe <= 32000 ms; Accessible challenge click; Press again <= 20000 ms; Loading <= 5000 ms; settle 7500-8500 ms; retry on challenge reappearance.
+
+Artifacts:
+MODIFIED_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main/artifacts/captcha_loop_20260813_150114/MODIFIED_FILE.py
+DIFF_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main/artifacts/captcha_loop_20260813_150114/DIFF_FILE.patch
+VERIFICATION_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main/artifacts/captcha_loop_20260813_150114/VERIFICATION.txt
+ROLLBACK_FILE=E:\agent worktable\gpt free plan\OutlookRegister-main/artifacts/captcha_loop_20260813_150114/ROLLBACK.sh
+
+BASELINE command: .venv\Scripts\python.exe -m py_compile artifacts\captcha_loop_20260813_150114\baseline\controllers\patchright_controller.py artifacts\captcha_loop_20260813_150114\baseline\tests\test_signup_flow.py
+BASELINE result: completed before modification; original SHA256 controllers/patchright_controller.py=35EB1733E465B0D66884557BF37C00CBC8B906D43C74384904A6B9169E6E731E
+BASELINE exit status: 0
+
+MODIFIED command: .venv\Scripts\python.exe -m py_compile controllers\patchright_controller.py tests\test_signup_flow.py; .venv\Scripts\python.exe -m unittest discover -s tests -v
+MODIFIED result: 27 tests ran, all passed (OK); py_compile passed.
+MODIFIED exit status: 0
+
+ROLLBACK command: sh artifacts/captcha_loop_20260813_150114/ROLLBACK.sh (on a disposable copy)
+ROLLBACK result: baseline files restored; behavior matches baseline hash.
+ROLLBACK exit status: 0
+
+Restored behavior/status: verified on disposable copy; working-tree MODIFIED_FILE remains changed (SHA256=3642FE1D3986A435E95EDAA4910F1598CE11B7307B6A6C97183830DF2CAF60C9).

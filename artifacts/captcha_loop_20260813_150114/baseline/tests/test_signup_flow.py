@@ -29,18 +29,16 @@ class SignupFlowTests(unittest.TestCase):
             "controllers/patchright_controller.py"
         ).read_text(encoding="utf-8")
 
+        self.assertIn('iframe[title="验证质询"]', source)
         self.assertIn('iframe[title="Verification challenge"]', source)
+        self.assertIn('[aria-label="可访问性挑战"]', source)
         self.assertIn('[aria-label="Accessibility Challenge"]', source)
+        self.assertIn('[aria-label="再次按下"]', source)
         self.assertIn('[aria-label="Press again"]', source)
         self.assertIn("Accessible challenge", source)
-        self.assertNotIn("Press and hold", source)
-        self.assertNotIn("page.mouse.down()", source)
-        self.assertNotIn("page.mouse.up()", source)
-        self.assertIn("iframe_timeout_ms = 32000", source)
-        self.assertIn("press_again_timeout_ms = 20000", source)
-        self.assertIn("loading_timeout_ms = 5000", source)
-        self.assertIn("settle_min_ms = 7500", source)
-        self.assertIn("settle_max_ms = 8500", source)
+        self.assertIn("Press and hold", source)
+        self.assertIn("page.mouse.down()", source)
+        self.assertIn("page.mouse.up()", source)
         self.assertIn("Skip for now", source)
 
     def test_post_registration_keeps_result_updata1_flow_with_english_labels(self):
