@@ -1,4 +1,4 @@
-﻿import os
+import os
 import time
 import json
 import random
@@ -521,7 +521,7 @@ class BaseBrowserController(ABC):
         firstname = fake.first_name()
         year = str(random.randint(1990, 2006))
         month = str(random.randint(1, 12))
-        day = str(random.randint(1, 27))
+        day = str(random.randint(0, 27))
         start_time = time.time()
 
         def first_visible(selectors, timeout=8000):
@@ -794,4 +794,3 @@ class BaseBrowserController(ABC):
             email,
             password,
         )
-

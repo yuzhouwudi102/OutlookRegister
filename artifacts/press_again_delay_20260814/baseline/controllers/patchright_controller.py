@@ -138,7 +138,6 @@ class PatchrightController(BaseBrowserController):
                 )
                 if press_again is None:
                     return False
-                page.wait_for_timeout(random.randint(1000, 3000))
                 press_again.click(timeout=5000, force=True)
                 wait_first_visible(
                     (

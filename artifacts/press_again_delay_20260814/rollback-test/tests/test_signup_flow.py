@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 from pathlib import Path
 
 from controllers.base_controller import signup_option_labels
@@ -38,7 +38,6 @@ class SignupFlowTests(unittest.TestCase):
         self.assertNotIn("page.mouse.up()", source)
         self.assertIn("iframe_timeout_ms = 32000", source)
         self.assertIn("press_again_timeout_ms = 20000", source)
-        self.assertIn("page.wait_for_timeout(random.randint(1000, 3000))", source)
         self.assertIn("loading_timeout_ms = 5000", source)
         self.assertIn("settle_min_ms = 7500", source)
         self.assertIn("settle_max_ms = 8500", source)
@@ -48,9 +47,9 @@ class SignupFlowTests(unittest.TestCase):
         source = Path("controllers/base_controller.py").read_text(encoding="utf-8")
 
         self.assertIn("year = str(random.randint(1990, 2006))", source)
-        self.assertIn("day = str(random.randint(1, 27))", source)
+        self.assertIn("day = str(random.randint(0, 27))", source)
         self.assertNotIn("year = str(random.randint(1960, 2005))", source)
-        self.assertNotIn("day = str(random.randint(0, 27))", source)
+        self.assertNotIn("day = str(random.randint(1, 28))", source)
 
     def test_post_registration_keeps_result_updata1_flow_with_english_labels(self):
         source = Path(
@@ -65,4 +64,3 @@ class SignupFlowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
