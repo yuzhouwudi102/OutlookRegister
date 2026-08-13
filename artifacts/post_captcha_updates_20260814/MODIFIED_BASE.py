@@ -302,7 +302,6 @@ class BaseBrowserController(ABC):
         mailbox_lock = self.get_recovery_mailbox_lock(account.email)
         with mailbox_lock:
             recovery_input.fill(account.email)
-            page.wait_for_timeout(2000)
             requested_at = datetime.now(timezone.utc)
 
             next_button = None
@@ -461,9 +460,6 @@ class BaseBrowserController(ABC):
     def finalize_registered_account(self, page, email, password):
         full_email = f"{email}{self.email_suffix}"
         if not self.complete_post_registration(page, full_email):
-            thread_local = getattr(self, "thread_local", None)
-            if getattr(thread_local, "captcha_completed", False):
-                print("但注册已成功，可尝试登录")
             return False
 
         self.save_registered_account(email, password)
@@ -519,7 +515,6 @@ class BaseBrowserController(ABC):
         """Fill the current Microsoft signup flow and finish registration."""
 
         self.reset_last_pos()
-        self.thread_local.captcha_completed = False
         fake = Faker()
 
         lastname = fake.last_name()
@@ -789,7 +784,6 @@ class BaseBrowserController(ABC):
             captcha_result = self.handle_captcha(page)
             if not captcha_result:
                 raise TimeoutError
-            self.thread_local.captcha_completed = True
 
         except Exception as exc:
             print(f"[Error: Signup Flow] - Signup page handling failed: {exc}")

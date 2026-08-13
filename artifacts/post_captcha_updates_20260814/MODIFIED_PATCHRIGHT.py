@@ -41,11 +41,6 @@ class PatchrightController(BaseBrowserController):
         )
         challenge_iframe = page.locator(iframe_selector).first
         frame1 = page.frame_locator(iframe_selector)
-        # On the first render, the inner iframe may be attached before its
-        # inline "display: block" style is added. Later challenge loops usually
-        # already have that style, which made retries more reliable than the
-        # first attempt. Search all inner iframes as a fallback.
-        frame_any = frame1.frame_locator('iframe')
         frame2 = frame1.frame_locator('iframe[style*="display: block"]')
         challenge_selector = (
             '[aria-label="\u53ef\u8bbf\u95ee\u6027\u6311\u6218"], '
@@ -103,16 +98,13 @@ class PatchrightController(BaseBrowserController):
         def click_accessibility_challenge():
             locators = (
                 frame2.locator(challenge_selector),
-                frame_any.locator(challenge_selector),
                 frame2.get_by_text("Accessible challenge", exact=True),
-                frame_any.get_by_text("Accessible challenge", exact=True),
                 frame2.get_by_text("Accessibility Challenge", exact=True),
-                frame_any.get_by_text("Accessibility Challenge", exact=True),
                 frame1.get_by_text("Accessible challenge", exact=True),
                 frame1.get_by_text("Accessibility Challenge", exact=True),
                 frame1.get_by_text("\u53ef\u8bbf\u95ee\u6027\u6311\u6218", exact=True),
             )
-            candidate = wait_first_visible(locators, timeout=12000)
+            candidate = wait_first_visible(locators, timeout=8000)
             if candidate is None:
                 return False
             try:
@@ -136,10 +128,8 @@ class PatchrightController(BaseBrowserController):
                 press_again = wait_first_visible(
                     (
                         frame2.locator(press_again_selector),
-                        frame_any.locator(press_again_selector),
                         frame1.locator(press_again_selector),
                         frame2.get_by_text("Press again", exact=True),
-                        frame_any.get_by_text("Press again", exact=True),
                         frame1.get_by_text("Press again", exact=True),
                         frame2.get_by_text("\u518d\u6b21\u6309\u4e0b", exact=True),
                         frame1.get_by_text("\u518d\u6b21\u6309\u4e0b", exact=True),
@@ -153,7 +143,6 @@ class PatchrightController(BaseBrowserController):
                 wait_first_visible(
                     (
                         frame2.locator(loading_selector),
-                        frame_any.locator(loading_selector),
                         frame1.locator(loading_selector),
                         page.locator(loading_selector),
                     ),
@@ -166,8 +155,6 @@ class PatchrightController(BaseBrowserController):
                 if has_skip_or_success():
                     return True
                 if first_visible(frame2.locator(challenge_selector)) is not None:
-                    continue
-                if first_visible(frame_any.locator(challenge_selector)) is not None:
                     continue
                 if first_visible(frame1.locator(challenge_selector)) is not None:
                     continue

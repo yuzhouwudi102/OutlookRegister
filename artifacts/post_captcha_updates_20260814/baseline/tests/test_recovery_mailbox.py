@@ -1,15 +1,12 @@
 import json
-import io
 import os
 import re
 import tempfile
 import threading
 import unittest
-from contextlib import redirect_stdout
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock, mock_open, patch
-from types import SimpleNamespace
 
 from authorize_recovery_mailbox import get_authorization_status
 from controllers.base_controller import BaseBrowserController
@@ -316,39 +313,6 @@ class RecoveryMailboxTests(unittest.TestCase):
 
         self.assertFalse(result)
         controller.save_registered_account.assert_not_called()
-
-    def test_failed_post_registration_after_captcha_reports_registration_success(self):
-        controller = object.__new__(DummyController)
-        controller.email_suffix = "@outlook.com"
-        controller.thread_local = SimpleNamespace(captcha_completed=True)
-        controller.complete_post_registration = Mock(return_value=False)
-        controller.save_registered_account = Mock()
-        output = io.StringIO()
-
-        with redirect_stdout(output):
-            result = controller.finalize_registered_account(
-                Mock(),
-                "failed-after-captcha",
-                "password",
-            )
-
-        self.assertFalse(result)
-        self.assertIn("但注册已成功，可尝试登录", output.getvalue())
-        controller.save_registered_account.assert_not_called()
-
-    def test_recovery_email_waits_two_seconds_after_fill(self):
-        source = Path(
-            "controllers/base_controller.py"
-        ).read_text(encoding="utf-8")
-        fill_index = source.index("recovery_input.fill(account.email)")
-        wait_index = source.index("page.wait_for_timeout(2000)", fill_index)
-        requested_index = source.index(
-            "requested_at = datetime.now(timezone.utc)",
-            fill_index,
-        )
-
-        self.assertLess(fill_index, wait_index)
-        self.assertLess(wait_index, requested_index)
 
     def test_successful_post_registration_is_saved(self):
         controller = object.__new__(DummyController)
