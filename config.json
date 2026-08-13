@@ -2,7 +2,7 @@
     "choose_browser": "patchright",
     "email_suffix": "@outlook.com",
     "recovery_mailbox": {
-        "auto_fetch": false,
+        "auto_fetch": true,
         "accounts_file": "Results/backup_email.txt",
         "token_dir": "Results/recovery_mailbox_token",
         "legacy_token_cache": "Results/recovery_mailbox_token.json",
@@ -42,13 +42,13 @@
             1.25
         ]
     },
-    "bot_protection_wait": 20,
+    "bot_protection_wait": 50,
     "max_captcha_retries": 8,
     "concurrent_flows": 1,
     "max_tasks": 1,
    "oauth2": {
-    "enable_oauth2": false,
-    "Loop Creation": false,
+    "enable_oauth2": true,
+    "Loop Creation": true,
     "client_id": "83266bbe-f241-4074-857f-fda88616d35a",
     "redirect_url": "http://localhost:8000",
     "Scopes": [

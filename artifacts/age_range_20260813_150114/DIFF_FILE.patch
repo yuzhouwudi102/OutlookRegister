@@ -1,0 +1,16 @@
+﻿diff --git a/artifacts/age_range_20260813_150114/baseline/controllers/base_controller.py b/controllers/base_controller.py
+index 1b09c3f..03a570e 100644
+--- a/artifacts/age_range_20260813_150114/baseline/controllers/base_controller.py
++++ b/controllers/base_controller.py
+@@ -519,9 +519,9 @@ class BaseBrowserController(ABC):
+ 
+         lastname = fake.last_name()
+         firstname = fake.first_name()
+-        year = str(random.randint(1960, 2005))
++        year = str(random.randint(1990, 2006))
+         month = str(random.randint(1, 12))
+-        day = str(random.randint(1, 28))
++        day = str(random.randint(0, 27))
+         start_time = time.time()
+ 
+         def first_visible(selectors, timeout=8000):
