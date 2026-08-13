@@ -43,7 +43,7 @@
         ]
     },
     "bot_protection_wait": 20,
-    "max_captcha_retries": 5,
+    "max_captcha_retries": 8,
     "concurrent_flows": 1,
     "max_tasks": 1,
    "oauth2": {

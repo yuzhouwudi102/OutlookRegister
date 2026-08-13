@@ -33,7 +33,7 @@ class PatchrightController(BaseBrowserController):
             'iframe[title="验证质询"], '
             'iframe[title="Verification challenge"]'
         ).first
-        challenge_iframe.wait_for(state="visible", timeout=22000)
+        challenge_iframe.wait_for(state="visible", timeout=32000)
 
         frame1 = page.frame_locator(
             'iframe[title="验证质询"], '
