@@ -17,17 +17,14 @@ from recovery_mailbox import (
     RecoveryMailboxClient,
     RecoveryMailboxAccount,
     LOOP_CREATION_ERROR,
-    build_outlook_token_record,
     build_loop_token_payload,
     clear_and_write_loop_backup,
     extract_security_code,
     find_code_in_messages,
     get_loop_token_file,
-    get_outlook_token_file,
     list_authorized_emails,
     load_backup_accounts,
     token_file_for_email,
-    save_outlook_token_record,
     validate_loop_creation,
 )
 
@@ -79,88 +76,6 @@ def build_config(directory):
 
 
 class RecoveryMailboxTests(unittest.TestCase):
-    def test_builds_outlook_token_five_field_record(self):
-        record = build_outlook_token_record(
-            "ONE@EXAMPLE.COM",
-            "secret",
-            "refresh",
-            "access",
-            1234.5,
-        )
-
-        self.assertEqual(
-            record,
-            "one@example.com---secret---refresh---access---1234.5",
-        )
-
-    def test_saves_and_replaces_outlook_token_record(self):
-        with tempfile.TemporaryDirectory() as directory:
-            config = build_config(directory)
-            config["oauth2"]["token_file"] = str(
-                Path(directory) / "outlook_token.txt"
-            )
-            account = RecoveryMailboxAccount(
-                "one@example.com",
-                "password",
-            )
-
-            first_path = save_outlook_token_record(
-                config,
-                account,
-                {
-                    "refresh_token": "refresh-one",
-                    "access_token": "access-one",
-                    "expires_at": 100.0,
-                },
-            )
-            second_path = save_outlook_token_record(
-                config,
-                account,
-                {
-                    "refresh_token": "refresh-two",
-                    "access_token": "access-two",
-                    "expires_at": 200.0,
-                },
-            )
-
-            self.assertEqual(first_path, get_outlook_token_file(config))
-            self.assertEqual(second_path, first_path)
-            self.assertEqual(
-                first_path.read_text(encoding="utf-8").splitlines(),
-                [
-                    "one@example.com---password---refresh-two---"
-                    "access-two---200.0"
-                ],
-            )
-
-    def test_authorize_script_uses_automated_flow_and_txt_export(self):
-        source = Path("authorize_recovery_mailbox.py").read_text(
-            encoding="utf-8"
-        )
-
-        self.assertIn("interactive=False", source)
-        self.assertIn("save_outlook_token_record", source)
-        self.assertNotIn("interactive=True", source)
-
-    def test_authorization_handles_account_picker_and_password_method(self):
-        source = Path("recovery_mailbox.py").read_text(encoding="utf-8")
-
-        picker_index = source.index('"Pick an account"')
-        account_index = source.index(
-            "page.get_by_text(self.email, exact=True)",
-            picker_index,
-        )
-        password_method_index = source.index('"Use your password"')
-        generic_email_index = source.index(
-            "'input[name=\"loginfmt\"], input[type=\"email\"]'",
-            password_method_index,
-        )
-
-        self.assertLess(picker_index, account_index)
-        self.assertLess(account_index, password_method_index)
-        self.assertLess(password_method_index, generic_email_index)
-        self.assertIn("account_picker_visible", source)
-
     def test_extracts_keyword_code(self):
         self.assertEqual(
             extract_security_code("Your Microsoft security code is 7654321."),

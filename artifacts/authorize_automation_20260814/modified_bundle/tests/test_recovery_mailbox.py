@@ -142,25 +142,6 @@ class RecoveryMailboxTests(unittest.TestCase):
         self.assertIn("save_outlook_token_record", source)
         self.assertNotIn("interactive=True", source)
 
-    def test_authorization_handles_account_picker_and_password_method(self):
-        source = Path("recovery_mailbox.py").read_text(encoding="utf-8")
-
-        picker_index = source.index('"Pick an account"')
-        account_index = source.index(
-            "page.get_by_text(self.email, exact=True)",
-            picker_index,
-        )
-        password_method_index = source.index('"Use your password"')
-        generic_email_index = source.index(
-            "'input[name=\"loginfmt\"], input[type=\"email\"]'",
-            password_method_index,
-        )
-
-        self.assertLess(picker_index, account_index)
-        self.assertLess(account_index, password_method_index)
-        self.assertLess(password_method_index, generic_email_index)
-        self.assertIn("account_picker_visible", source)
-
     def test_extracts_keyword_code(self):
         self.assertEqual(
             extract_security_code("Your Microsoft security code is 7654321."),

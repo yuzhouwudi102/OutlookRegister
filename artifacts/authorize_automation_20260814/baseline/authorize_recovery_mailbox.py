@@ -13,7 +13,6 @@ from recovery_mailbox import (
     get_accounts_file,
     list_authorized_emails,
     load_backup_accounts,
-    save_outlook_token_record,
 )
 
 
@@ -93,22 +92,16 @@ def main():
                     account=account,
                 )
                 try:
-                    token_payload = client.authorize_with_browser(
+                    client.authorize_with_browser(
                         browser,
-                        interactive=False,
+                        interactive=True,
                         timeout_seconds=300,
                         context_options=context_options,
                         init_script=init_script,
                         runtime_profile=profile,
                     )
-                    outlook_token_path = save_outlook_token_record(
-                        config,
-                        account,
-                        token_payload,
-                    )
                     print(f"[授权成功] {account.email}")
                     print(f"[令牌文件] {client.token_cache}")
-                    print(f"[Outlook令牌] {outlook_token_path}")
                 except Exception as exc:
                     failed_accounts.append(account.email)
                     print(f"[授权失败] {account.email}: {exc}")

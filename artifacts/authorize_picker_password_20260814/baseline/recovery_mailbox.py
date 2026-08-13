@@ -1,4 +1,4 @@
-import base64
+﻿import base64
 import hashlib
 import html
 import json
@@ -25,8 +25,6 @@ DEFAULT_CODE_PATTERN = r"(?<!\d)(\d{6,8})(?!\d)"
 DEFAULT_ACCOUNTS_FILE = "Results/backup_email.txt"
 DEFAULT_TOKEN_DIR = "Results/recovery_mailbox_token"
 DEFAULT_LEGACY_TOKEN_FILE = "Results/recovery_mailbox_token.json"
-DEFAULT_OUTLOOK_TOKEN_FILE = "Results/outlook_token.txt"
-OUTLOOK_TOKEN_SEPARATOR = "---"
 DEFAULT_LOOP_TOKEN_FILE = (
     "Results/recovery_mailbox_token/"
     "tarmaobrvkuzbt_outlook.com_c8ffee6885.json"
@@ -94,11 +92,6 @@ def get_loop_token_file(config):
     )
 
 
-def get_outlook_token_file(config):
-    oauth2 = config.get("oauth2", {})
-    return Path(oauth2.get("token_file", DEFAULT_OUTLOOK_TOKEN_FILE))
-
-
 def token_file_for_email(token_dir, email):
     normalized = email.strip().lower()
     readable = re.sub(r"[^a-z0-9._-]+", "_", normalized)
@@ -154,58 +147,6 @@ def atomic_write_text(path, text):
     finally:
         if os.path.exists(temp_name):
             os.remove(temp_name)
-
-
-def build_outlook_token_record(
-    email,
-    password,
-    refresh_token,
-    access_token,
-    expires_at,
-):
-    """Build the five-field record consumed by refresh_tokens.py."""
-    return OUTLOOK_TOKEN_SEPARATOR.join(
-        (
-            email.strip().lower(),
-            password,
-            refresh_token or "",
-            access_token or "",
-            str(float(expires_at)),
-        )
-    )
-
-
-def save_outlook_token_record(config, account, token_payload):
-    """Atomically insert or replace one mailbox in outlook_token.txt."""
-    path = get_outlook_token_file(config)
-    normalized_email = account.email.strip().lower()
-    record = build_outlook_token_record(
-        normalized_email,
-        account.password,
-        token_payload.get("refresh_token", ""),
-        token_payload.get("access_token", ""),
-        token_payload.get("expires_at", 0),
-    )
-    existing_lines = (
-        path.read_text(encoding="utf-8").splitlines()
-        if path.exists()
-        else []
-    )
-    updated_lines = []
-    replaced = False
-    for line in existing_lines:
-        line_email = line.split(OUTLOOK_TOKEN_SEPARATOR, 1)[0]
-        if line_email.strip().lower() == normalized_email:
-            if not replaced:
-                updated_lines.append(record)
-                replaced = True
-            continue
-        updated_lines.append(line)
-    if not replaced:
-        updated_lines.append(record)
-
-    atomic_write_text(path, "\n".join(updated_lines) + "\n")
-    return path
 
 
 def build_loop_token_payload(
@@ -580,138 +521,47 @@ class RecoveryMailboxClient:
             except Exception:
                 pass
 
+            login_input = page.locator(
+                'input[name="loginfmt"], input[type="email"]'
+            ).first
+            try:
+                login_input.wait_for(state="visible", timeout=10000)
+                login_input.fill(self.email)
+                page.locator(
+                    "#idSIButton9, button[type='submit'], input[type='submit']"
+                ).first.click()
+            except Exception:
+                pass
+
+            password_input = page.locator(
+                'input[name="passwd"], input[type="password"]'
+            ).first
+            try:
+                password_input.wait_for(state="visible", timeout=10000)
+                password_input.fill(password)
+                page.locator(
+                    "#idSIButton9, button[type='submit'], input[type='submit']"
+                ).first.click()
+            except Exception:
+                pass
+
+            for selector in (
+                '[data-testid="appConsentPrimaryButton"]',
+                "#idSIButton9",
+            ):
+                button = page.locator(selector).first
+                try:
+                    button.wait_for(state="visible", timeout=5000)
+                    button.click()
+                except Exception:
+                    continue
+
+            if interactive:
+                print(f"[等待授权] {self.email}")
+                print("请在浏览器中完成安全验证和授权，并保持窗口打开。")
+
             deadline = time.time() + float(timeout_seconds)
             while time.time() < deadline and not captured_url:
-                action_taken = False
-
-                # The account picker has no login input. Only click the
-                # configured mailbox while the picker heading is visible, so
-                # the same email shown later as a page badge is not misclicked.
-                account_picker_visible = False
-                for picker_text in (
-                    "Pick an account",
-                    "选择帐户",
-                    "选择账户",
-                ):
-                    picker = page.get_by_text(
-                        picker_text,
-                        exact=True,
-                    ).first
-                    try:
-                        if picker.count() > 0 and picker.is_visible():
-                            account_picker_visible = True
-                            break
-                    except Exception:
-                        continue
-
-                if account_picker_visible:
-                    account_candidates = (
-                        page.get_by_text(self.email, exact=True).first,
-                        page.locator(
-                            f'[data-test-id="{self.email}"]'
-                        ).first,
-                        page.locator(
-                            f'[aria-label*="{self.email}"]'
-                        ).first,
-                        page.locator(
-                            '[role="button"], [role="link"]'
-                        ).filter(has_text=self.email).first,
-                    )
-                    for account_candidate in account_candidates:
-                        try:
-                            if (
-                                account_candidate.count() > 0
-                                and account_candidate.is_visible()
-                            ):
-                                account_candidate.click(timeout=7000)
-                                action_taken = True
-                                page.wait_for_timeout(600)
-                                break
-                        except Exception:
-                            continue
-                    if action_taken:
-                        continue
-
-                # Microsoft can default to an email-code verification screen.
-                # Switch back to password authentication before treating its
-                # email field as a normal login input.
-                password_method_candidates = (
-                    page.get_by_text(
-                        "Use your password", exact=True
-                    ).first,
-                    page.get_by_text(
-                        "使用密码", exact=True
-                    ).first,
-                    page.get_by_text(
-                        "使用密码登录", exact=True
-                    ).first,
-                    page.locator(
-                        'button:has-text("Use your password"), '
-                        'a:has-text("Use your password"), '
-                        '[role="button"]:has-text("Use your password")'
-                    ).first,
-                )
-                for password_method in password_method_candidates:
-                    try:
-                        if (
-                            password_method.count() > 0
-                            and password_method.is_visible()
-                        ):
-                            password_method.click(timeout=7000)
-                            action_taken = True
-                            page.wait_for_timeout(600)
-                            break
-                    except Exception:
-                        continue
-                if action_taken:
-                    continue
-
-                for selector, value in (
-                    (
-                        'input[name="loginfmt"], input[type="email"]',
-                        self.email,
-                    ),
-                    (
-                        'input[name="passwd"], input[type="password"]',
-                        password,
-                    ),
-                ):
-                    field = page.locator(selector).first
-                    try:
-                        if field.count() > 0 and field.is_visible():
-                            field.fill(value)
-                            page.locator(
-                                "#idSIButton9, button[type='submit'], "
-                                "input[type='submit']"
-                            ).first.click(timeout=7000)
-                            action_taken = True
-                            page.wait_for_timeout(600)
-                            break
-                    except Exception:
-                        continue
-                if action_taken:
-                    continue
-
-                for selector in (
-                    '[data-testid="appConsentPrimaryButton"]',
-                    '#idSIButton9',
-                    'button:has-text("Accept")',
-                    'button:has-text("接受")',
-                    'input[type="submit"][value="Yes"]',
-                    'input[type="submit"][value="是"]',
-                ):
-                    button = page.locator(selector).first
-                    try:
-                        if button.count() > 0 and button.is_visible():
-                            button.click(timeout=7000)
-                            action_taken = True
-                            page.wait_for_timeout(600)
-                            break
-                    except Exception:
-                        continue
-
-                if interactive and not action_taken:
-                    print(f"[等待授权] {self.email}")
                 page.wait_for_timeout(250)
         finally:
             page.remove_listener("request", capture_redirect)

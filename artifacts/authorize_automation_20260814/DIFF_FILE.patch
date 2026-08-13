@@ -1,0 +1,311 @@
+warning: in the working copy of 'authorize_recovery_mailbox.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'recovery_mailbox.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/test_recovery_mailbox.py', LF will be replaced by CRLF the next time Git touches it
+diff --git a/authorize_recovery_mailbox.py b/authorize_recovery_mailbox.py
+index df28b9f..3510bfe 100644
+--- a/authorize_recovery_mailbox.py
++++ b/authorize_recovery_mailbox.py
+@@ -13,6 +13,7 @@ from recovery_mailbox import (
+     get_accounts_file,
+     list_authorized_emails,
+     load_backup_accounts,
++    save_outlook_token_record,
+ )
+ 
+ 
+@@ -92,16 +93,22 @@ def main():
+                     account=account,
+                 )
+                 try:
+-                    client.authorize_with_browser(
++                    token_payload = client.authorize_with_browser(
+                         browser,
+-                        interactive=True,
++                        interactive=False,
+                         timeout_seconds=300,
+                         context_options=context_options,
+                         init_script=init_script,
+                         runtime_profile=profile,
+                     )
++                    outlook_token_path = save_outlook_token_record(
++                        config,
++                        account,
++                        token_payload,
++                    )
+                     print(f"[授权成功] {account.email}")
+                     print(f"[令牌文件] {client.token_cache}")
++                    print(f"[Outlook令牌] {outlook_token_path}")
+                 except Exception as exc:
+                     failed_accounts.append(account.email)
+                     print(f"[授权失败] {account.email}: {exc}")
+diff --git a/recovery_mailbox.py b/recovery_mailbox.py
+index f0a050b..351374b 100644
+--- a/recovery_mailbox.py
++++ b/recovery_mailbox.py
+@@ -25,6 +25,8 @@ DEFAULT_CODE_PATTERN = r"(?<!\d)(\d{6,8})(?!\d)"
+ DEFAULT_ACCOUNTS_FILE = "Results/backup_email.txt"
+ DEFAULT_TOKEN_DIR = "Results/recovery_mailbox_token"
+ DEFAULT_LEGACY_TOKEN_FILE = "Results/recovery_mailbox_token.json"
++DEFAULT_OUTLOOK_TOKEN_FILE = "Results/outlook_token.txt"
++OUTLOOK_TOKEN_SEPARATOR = "---"
+ DEFAULT_LOOP_TOKEN_FILE = (
+     "Results/recovery_mailbox_token/"
+     "tarmaobrvkuzbt_outlook.com_c8ffee6885.json"
+@@ -92,6 +94,11 @@ def get_loop_token_file(config):
+     )
+ 
+ 
++def get_outlook_token_file(config):
++    oauth2 = config.get("oauth2", {})
++    return Path(oauth2.get("token_file", DEFAULT_OUTLOOK_TOKEN_FILE))
++
++
+ def token_file_for_email(token_dir, email):
+     normalized = email.strip().lower()
+     readable = re.sub(r"[^a-z0-9._-]+", "_", normalized)
+@@ -149,6 +156,58 @@ def atomic_write_text(path, text):
+             os.remove(temp_name)
+ 
+ 
++def build_outlook_token_record(
++    email,
++    password,
++    refresh_token,
++    access_token,
++    expires_at,
++):
++    """Build the five-field record consumed by refresh_tokens.py."""
++    return OUTLOOK_TOKEN_SEPARATOR.join(
++        (
++            email.strip().lower(),
++            password,
++            refresh_token or "",
++            access_token or "",
++            str(float(expires_at)),
++        )
++    )
++
++
++def save_outlook_token_record(config, account, token_payload):
++    """Atomically insert or replace one mailbox in outlook_token.txt."""
++    path = get_outlook_token_file(config)
++    normalized_email = account.email.strip().lower()
++    record = build_outlook_token_record(
++        normalized_email,
++        account.password,
++        token_payload.get("refresh_token", ""),
++        token_payload.get("access_token", ""),
++        token_payload.get("expires_at", 0),
++    )
++    existing_lines = (
++        path.read_text(encoding="utf-8").splitlines()
++        if path.exists()
++        else []
++    )
++    updated_lines = []
++    replaced = False
++    for line in existing_lines:
++        line_email = line.split(OUTLOOK_TOKEN_SEPARATOR, 1)[0]
++        if line_email.strip().lower() == normalized_email:
++            if not replaced:
++                updated_lines.append(record)
++                replaced = True
++            continue
++        updated_lines.append(line)
++    if not replaced:
++        updated_lines.append(record)
++
++    atomic_write_text(path, "\n".join(updated_lines) + "\n")
++    return path
++
++
+ def build_loop_token_payload(
+     email,
+     refresh_token,
+@@ -521,47 +580,55 @@ class RecoveryMailboxClient:
+             except Exception:
+                 pass
+ 
+-            login_input = page.locator(
+-                'input[name="loginfmt"], input[type="email"]'
+-            ).first
+-            try:
+-                login_input.wait_for(state="visible", timeout=10000)
+-                login_input.fill(self.email)
+-                page.locator(
+-                    "#idSIButton9, button[type='submit'], input[type='submit']"
+-                ).first.click()
+-            except Exception:
+-                pass
+-
+-            password_input = page.locator(
+-                'input[name="passwd"], input[type="password"]'
+-            ).first
+-            try:
+-                password_input.wait_for(state="visible", timeout=10000)
+-                password_input.fill(password)
+-                page.locator(
+-                    "#idSIButton9, button[type='submit'], input[type='submit']"
+-                ).first.click()
+-            except Exception:
+-                pass
+-
+-            for selector in (
+-                '[data-testid="appConsentPrimaryButton"]',
+-                "#idSIButton9",
+-            ):
+-                button = page.locator(selector).first
+-                try:
+-                    button.wait_for(state="visible", timeout=5000)
+-                    button.click()
+-                except Exception:
+-                    continue
+-
+-            if interactive:
+-                print(f"[等待授权] {self.email}")
+-                print("请在浏览器中完成安全验证和授权，并保持窗口打开。")
+-
+             deadline = time.time() + float(timeout_seconds)
+             while time.time() < deadline and not captured_url:
++                action_taken = False
++                for selector, value in (
++                    (
++                        'input[name="loginfmt"], input[type="email"]',
++                        self.email,
++                    ),
++                    (
++                        'input[name="passwd"], input[type="password"]',
++                        password,
++                    ),
++                ):
++                    field = page.locator(selector).first
++                    try:
++                        if field.count() > 0 and field.is_visible():
++                            field.fill(value)
++                            page.locator(
++                                "#idSIButton9, button[type='submit'], "
++                                "input[type='submit']"
++                            ).first.click(timeout=7000)
++                            action_taken = True
++                            page.wait_for_timeout(600)
++                            break
++                    except Exception:
++                        continue
++                if action_taken:
++                    continue
++
++                for selector in (
++                    '[data-testid="appConsentPrimaryButton"]',
++                    '#idSIButton9',
++                    'button:has-text("Accept")',
++                    'button:has-text("接受")',
++                    'input[type="submit"][value="Yes"]',
++                    'input[type="submit"][value="是"]',
++                ):
++                    button = page.locator(selector).first
++                    try:
++                        if button.count() > 0 and button.is_visible():
++                            button.click(timeout=7000)
++                            action_taken = True
++                            page.wait_for_timeout(600)
++                            break
++                    except Exception:
++                        continue
++
++                if interactive and not action_taken:
++                    print(f"[等待授权] {self.email}")
+                 page.wait_for_timeout(250)
+         finally:
+             page.remove_listener("request", capture_redirect)
+diff --git a/tests/test_recovery_mailbox.py b/tests/test_recovery_mailbox.py
+index 00c6070..8310d9f 100644
+--- a/tests/test_recovery_mailbox.py
++++ b/tests/test_recovery_mailbox.py
+@@ -17,14 +17,17 @@ from recovery_mailbox import (
+     RecoveryMailboxClient,
+     RecoveryMailboxAccount,
+     LOOP_CREATION_ERROR,
++    build_outlook_token_record,
+     build_loop_token_payload,
+     clear_and_write_loop_backup,
+     extract_security_code,
+     find_code_in_messages,
+     get_loop_token_file,
++    get_outlook_token_file,
+     list_authorized_emails,
+     load_backup_accounts,
+     token_file_for_email,
++    save_outlook_token_record,
+     validate_loop_creation,
+ )
+ 
+@@ -76,6 +79,69 @@ def build_config(directory):
+ 
+ 
+ class RecoveryMailboxTests(unittest.TestCase):
++    def test_builds_outlook_token_five_field_record(self):
++        record = build_outlook_token_record(
++            "ONE@EXAMPLE.COM",
++            "secret",
++            "refresh",
++            "access",
++            1234.5,
++        )
++
++        self.assertEqual(
++            record,
++            "one@example.com---secret---refresh---access---1234.5",
++        )
++
++    def test_saves_and_replaces_outlook_token_record(self):
++        with tempfile.TemporaryDirectory() as directory:
++            config = build_config(directory)
++            config["oauth2"]["token_file"] = str(
++                Path(directory) / "outlook_token.txt"
++            )
++            account = RecoveryMailboxAccount(
++                "one@example.com",
++                "password",
++            )
++
++            first_path = save_outlook_token_record(
++                config,
++                account,
++                {
++                    "refresh_token": "refresh-one",
++                    "access_token": "access-one",
++                    "expires_at": 100.0,
++                },
++            )
++            second_path = save_outlook_token_record(
++                config,
++                account,
++                {
++                    "refresh_token": "refresh-two",
++                    "access_token": "access-two",
++                    "expires_at": 200.0,
++                },
++            )
++
++            self.assertEqual(first_path, get_outlook_token_file(config))
++            self.assertEqual(second_path, first_path)
++            self.assertEqual(
++                first_path.read_text(encoding="utf-8").splitlines(),
++                [
++                    "one@example.com---password---refresh-two---"
++                    "access-two---200.0"
++                ],
++            )
++
++    def test_authorize_script_uses_automated_flow_and_txt_export(self):
++        source = Path("authorize_recovery_mailbox.py").read_text(
++            encoding="utf-8"
++        )
++
++        self.assertIn("interactive=False", source)
++        self.assertIn("save_outlook_token_record", source)
++        self.assertNotIn("interactive=True", source)
++
+     def test_extracts_keyword_code(self):
+         self.assertEqual(
+             extract_security_code("Your Microsoft security code is 7654321."),
