@@ -79,45 +79,6 @@ def build_config(directory):
 
 
 class RecoveryMailboxTests(unittest.TestCase):
-    def test_recovery_email_retries_next_before_mailbox_polling(self):
-        controller = object.__new__(DummyController)
-        controller.smooth_click = Mock()
-        page = Mock()
-        recovery_input = Mock()
-        recovery_input.is_visible.return_value = True
-        next_button = Mock()
-        code_input = Mock()
-        code_input.wait_for.side_effect = [RuntimeError('not ready'), None]
-        page.locator.return_value.first = code_input
-
-        result = controller.wait_for_recovery_code_step(
-            page,
-            recovery_input,
-            next_button,
-        )
-
-        self.assertIs(result, code_input)
-        controller.smooth_click.assert_called_once_with(page, next_button)
-        next_button.click.assert_called_once_with(timeout=5000)
-        self.assertEqual(
-            code_input.wait_for.call_args_list,
-            [
-                unittest.mock.call(state='visible', timeout=15000),
-                unittest.mock.call(state='visible', timeout=20000),
-            ],
-        )
-
-    def test_recovery_email_confirms_code_page_before_graph_polling(self):
-        source = Path('controllers/base_controller.py').read_text(
-            encoding='utf-8'
-        )
-        handler = source[source.index('    def handle_recovery_email_prompt'):]
-
-        self.assertLess(
-            handler.index('self.wait_for_recovery_code_step('),
-            handler.index('mailbox_client.wait_for_code('),
-        )
-
     def test_builds_outlook_token_five_field_record(self):
         record = build_outlook_token_record(
             "ONE@EXAMPLE.COM",

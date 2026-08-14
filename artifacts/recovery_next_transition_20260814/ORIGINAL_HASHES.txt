@@ -1,0 +1,8 @@
+﻿
+Algorithm Hash                                                             Path                                        
+--------- ----                                                             ----                                        
+SHA256    CA2E303ED6D36FAAAF25F8395E0CE7D248C8F7C5D557E3D304502E9C7090D9C9 E:\agent worktable\gpt free plan\OutlookR...
+SHA256    5AAA41D618153CE53CDF0E516472B448AA4461591A7198989C9A3CE363913F5F E:\agent worktable\gpt free plan\OutlookR...
+
+
+

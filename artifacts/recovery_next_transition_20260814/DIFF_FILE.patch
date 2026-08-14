@@ -1,0 +1,99 @@
+--- controllers/base_controller.py (baseline)
++++ controllers/base_controller.py (modified)
+@@ -329,6 +329,63 @@
+                 self.recovery_locks[email] = threading.Lock()
+             return self.recovery_locks[email]
+ 
++    def wait_for_recovery_code_step(
++        self,
++        page,
++        recovery_input,
++        next_button,
++    ):
++        """提交备用邮箱，并确认页面已进入验证码输入步骤。"""
++        code_input = page.locator(
++            'input[name="VerificationCode"], input[name="otc"], '
++            'input[name="code"], input[type="tel"], input[inputmode="numeric"], '
++            'input[aria-label*="code" i], input[placeholder*="code" i], '
++            'input[aria-label*="代码"], input[placeholder*="代码"]'
++        ).first
++
++        self.smooth_click(page, next_button)
++        print(
++            '[Recovery Email] Next clicked; confirming verification-code page.',
++            flush=True,
++        )
++        try:
++            code_input.wait_for(state='visible', timeout=15000)
++            return code_input
++        except Exception:
++            try:
++                recovery_page_visible = recovery_input.is_visible()
++            except Exception:
++                recovery_page_visible = False
++
++        if recovery_page_visible:
++            print(
++                '[Recovery Email] Recovery page is still visible; '
++                'retrying Next with a direct locator click.',
++                flush=True,
++            )
++            try:
++                next_button.click(timeout=5000)
++            except Exception as exc:
++                raise RuntimeError(
++                    '备用邮箱页面仍然可见，且重试 Next 点击失败'
++                ) from exc
++
++        try:
++            code_input.wait_for(state='visible', timeout=20000)
++            return code_input
++        except Exception as exc:
++            try:
++                recovery_page_visible = recovery_input.is_visible()
++            except Exception:
++                recovery_page_visible = False
++            if recovery_page_visible:
++                raise RuntimeError(
++                    '备用邮箱页面仍然可见，Next 点击未生效'
++                ) from exc
++            raise RuntimeError(
++                '备用邮箱页面已跳转，但验证码输入框未出现'
++            ) from exc
++
+     def handle_recovery_email_prompt(self, page, target_email=""):
+         """填写 Microsoft 强制显示的备用邮箱页面。"""
+         recovery_input = page.locator(
+@@ -377,8 +434,16 @@
+                 )
+                 return False
+ 
+-            self.smooth_click(page, next_button)
+-            print('[Recovery Email] Next clicked; waiting for verification code.', flush=True)
++            try:
++                code_input = self.wait_for_recovery_code_step(
++                    page,
++                    recovery_input,
++                    next_button,
++                )
++            except Exception as exc:
++                print(f'[Error: Recovery Email] - 提交备用邮箱失败：{exc}')
++                return False
++
+             if not self.recovery_mailbox_enabled:
+                 print(
+                     f'[Action: Recovery Email] - 已随机填写 {account.email}。'
+@@ -392,13 +457,6 @@
+                     requested_at=requested_at,
+                     target_email=target_email,
+                 )
+-                code_input = page.locator(
+-                    'input[name="VerificationCode"], input[name="otc"], '
+-                    'input[name="code"], input[type="tel"], input[inputmode="numeric"], '
+-                    'input[aria-label*="code" i], input[placeholder*="code" i], '
+-                    'input[aria-label*="代码"], input[placeholder*="代码"]'
+-                ).first
+-                code_input.wait_for(state='visible', timeout=15000)
+                 code_input.fill(code)
+ 
+                 submit_button = None

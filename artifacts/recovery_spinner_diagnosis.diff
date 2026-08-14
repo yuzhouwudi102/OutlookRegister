@@ -1,0 +1,37 @@
+﻿diff --git a/artifacts/recovery_spinner_diagnosis_BASELINE.py b/controllers/base_controller.py
+index 7611069..4ab7b96 100644
+--- a/artifacts/recovery_spinner_diagnosis_BASELINE.py
++++ b/controllers/base_controller.py
+@@ -378,6 +378,7 @@ class BaseBrowserController(ABC):
+                 return False
+ 
+             self.smooth_click(page, next_button)
++            print('[Recovery Email] Next clicked; waiting for verification code.', flush=True)
+             if not self.recovery_mailbox_enabled:
+                 print(
+                     f'[Action: Recovery Email] - 已随机填写 {account.email}。'
+@@ -386,6 +387,7 @@ class BaseBrowserController(ABC):
+                 return True
+ 
+             try:
++                print('[Recovery Email] Polling Graph for code (timeout=%ss, interval=%ss).' % (mailbox_client.timeout_seconds, mailbox_client.poll_interval_seconds), flush=True)
+                 code = mailbox_client.wait_for_code(
+                     requested_at=requested_at,
+                     target_email=target_email,
+@@ -414,10 +416,7 @@ class BaseBrowserController(ABC):
+                     raise RuntimeError('验证码已填写，但没有找到提交按钮')
+ 
+                 self.smooth_click(page, submit_button)
+-                print(
+-                    f'[Action: Recovery Email] - 已使用 {account.email} '
+-                    '自动读取并填写验证码。'
+-                )
++                print(f'[Action: Recovery Email] - 已使用 {account.email} 自动读取并填写验证码。', flush=True)
+             except Exception as exc:
+                 print(f'[Error: Recovery Email] - 自动取码或填写失败：{exc}')
+                 return False
+@@ -849,3 +848,4 @@ class BaseBrowserController(ABC):
+             password,
+         )
+ 
++

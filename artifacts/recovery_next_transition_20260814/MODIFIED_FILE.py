@@ -631,7 +631,7 @@ class BaseBrowserController(ABC):
         firstname = fake.first_name()
         year = str(random.randint(1990, 2006))
         month = str(random.randint(1, 12))
-        day = str(random.randint(1, 21))
+        day = str(random.randint(1, 23))
         start_time = time.time()
 
         def first_visible(selectors, timeout=8000):

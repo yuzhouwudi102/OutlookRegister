@@ -1,0 +1,45 @@
+﻿[Action: Recovery Email] - loop@example.com 未授权，开始自动授权。
+[Action: Recovery Email] - loop@example.com 自动授权成功；Outlook 令牌已保存至 C:\WINDOWS\TEMP\tmpyri8vu7b\outlook_token.txt
+[Attempt: Email Registration] - created@outlook.com: CreatedPassword!
+[Success: TokenAuth] - created@outlook.com
+已提交 1/2 任务.
+已提交 2/2 任务.
+
+[Result] - 共: 2, 成功 2, 失败 0
+[Saved: Email Account] - new-account@outlook.com -> C:\WINDOWS\TEMP\tmpl85dgeov\unlogged_email.txt
+[Saved: Email Account] - new-account@outlook.com -> C:\WINDOWS\TEMP\tmpl85dgeov\unlogged_email.txt
+[Action: Recovery Email] - one@example.com 未授权，开始自动授权。
+[Action: Recovery Email] - one@example.com 自动授权成功；Outlook 令牌已保存至 C:\WINDOWS\TEMP\tmpek7y40h0\outlook_token.txt
+[Success: Email Registration] - successful-account@outlook.com
+
+test_authorization_handles_account_picker_and_password_method (test_recovery_mailbox.RecoveryMailboxTests.test_authorization_handles_account_picker_and_password_method) ... ok
+test_authorization_waits_one_second_after_navigation_actions (test_recovery_mailbox.RecoveryMailboxTests.test_authorization_waits_one_second_after_navigation_actions) ... ok
+test_authorize_script_uses_automated_flow_and_txt_export (test_recovery_mailbox.RecoveryMailboxTests.test_authorize_script_uses_automated_flow_and_txt_export) ... ok
+test_builds_outlook_token_five_field_record (test_recovery_mailbox.RecoveryMailboxTests.test_builds_outlook_token_five_field_record) ... ok
+test_detects_authorized_and_pending_accounts (test_recovery_mailbox.RecoveryMailboxTests.test_detects_authorized_and_pending_accounts) ... ok
+test_extracts_keyword_code (test_recovery_mailbox.RecoveryMailboxTests.test_extracts_keyword_code) ... ok
+test_failed_post_registration_after_captcha_reports_registration_success (test_recovery_mailbox.RecoveryMailboxTests.test_failed_post_registration_after_captcha_reports_registration_success) ... ok
+test_failed_post_registration_is_not_saved (test_recovery_mailbox.RecoveryMailboxTests.test_failed_post_registration_is_not_saved) ... ok
+test_ignores_old_message (test_recovery_mailbox.RecoveryMailboxTests.test_ignores_old_message) ... ok
+test_loads_multiple_backup_accounts (test_recovery_mailbox.RecoveryMailboxTests.test_loads_multiple_backup_accounts) ... ok
+test_loop_assigned_account_is_authorized_when_needed (test_recovery_mailbox.RecoveryMailboxTests.test_loop_assigned_account_is_authorized_when_needed) ... ok
+test_loop_creation_process_persists_token_and_rotates_backup (test_recovery_mailbox.RecoveryMailboxTests.test_loop_creation_process_persists_token_and_rotates_backup) ... ok
+test_loop_creation_requires_matching_task_count_and_oauth (test_recovery_mailbox.RecoveryMailboxTests.test_loop_creation_requires_matching_task_count_and_oauth) ... ok
+test_loop_creation_rotates_backup_and_token_payload (test_recovery_mailbox.RecoveryMailboxTests.test_loop_creation_rotates_backup_and_token_payload) ... ok
+test_loop_creation_uses_each_assigned_account_once (test_recovery_mailbox.RecoveryMailboxTests.test_loop_creation_uses_each_assigned_account_once) ... ok
+test_migrates_legacy_single_token (test_recovery_mailbox.RecoveryMailboxTests.test_migrates_legacy_single_token) ... ok
+test_oauth_disabled_account_is_saved_to_unlogged_file (test_recovery_mailbox.RecoveryMailboxTests.test_oauth_disabled_account_is_saved_to_unlogged_file) ... ok
+test_oauth_disabled_still_runs_recovery_email_flow (test_recovery_mailbox.RecoveryMailboxTests.test_oauth_disabled_still_runs_recovery_email_flow) ... ok
+test_prefers_message_matching_target_account (test_recovery_mailbox.RecoveryMailboxTests.test_prefers_message_matching_target_account) ... ok
+test_recovery_email_waits_two_seconds_after_fill (test_recovery_mailbox.RecoveryMailboxTests.test_recovery_email_waits_two_seconds_after_fill) ... ok
+test_registration_authorizes_when_no_authorized_account_exists (test_recovery_mailbox.RecoveryMailboxTests.test_registration_authorizes_when_no_authorized_account_exists) ... ok
+test_registration_randomly_selects_an_authorized_account (test_recovery_mailbox.RecoveryMailboxTests.test_registration_randomly_selects_an_authorized_account) ... ok
+test_saves_and_replaces_outlook_token_record (test_recovery_mailbox.RecoveryMailboxTests.test_saves_and_replaces_outlook_token_record) ... ok
+test_successful_post_registration_is_saved (test_recovery_mailbox.RecoveryMailboxTests.test_successful_post_registration_is_saved) ... ok
+test_uses_separate_token_file_for_each_email (test_recovery_mailbox.RecoveryMailboxTests.test_uses_separate_token_file_for_each_email) ... ok
+
+----------------------------------------------------------------------
+Ran 25 tests in 1.136s
+
+OK
+

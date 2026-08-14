@@ -329,63 +329,6 @@ class BaseBrowserController(ABC):
                 self.recovery_locks[email] = threading.Lock()
             return self.recovery_locks[email]
 
-    def wait_for_recovery_code_step(
-        self,
-        page,
-        recovery_input,
-        next_button,
-    ):
-        """提交备用邮箱，并确认页面已进入验证码输入步骤。"""
-        code_input = page.locator(
-            'input[name="VerificationCode"], input[name="otc"], '
-            'input[name="code"], input[type="tel"], input[inputmode="numeric"], '
-            'input[aria-label*="code" i], input[placeholder*="code" i], '
-            'input[aria-label*="代码"], input[placeholder*="代码"]'
-        ).first
-
-        self.smooth_click(page, next_button)
-        print(
-            '[Recovery Email] Next clicked; confirming verification-code page.',
-            flush=True,
-        )
-        try:
-            code_input.wait_for(state='visible', timeout=15000)
-            return code_input
-        except Exception:
-            try:
-                recovery_page_visible = recovery_input.is_visible()
-            except Exception:
-                recovery_page_visible = False
-
-        if recovery_page_visible:
-            print(
-                '[Recovery Email] Recovery page is still visible; '
-                'retrying Next with a direct locator click.',
-                flush=True,
-            )
-            try:
-                next_button.click(timeout=5000)
-            except Exception as exc:
-                raise RuntimeError(
-                    '备用邮箱页面仍然可见，且重试 Next 点击失败'
-                ) from exc
-
-        try:
-            code_input.wait_for(state='visible', timeout=20000)
-            return code_input
-        except Exception as exc:
-            try:
-                recovery_page_visible = recovery_input.is_visible()
-            except Exception:
-                recovery_page_visible = False
-            if recovery_page_visible:
-                raise RuntimeError(
-                    '备用邮箱页面仍然可见，Next 点击未生效'
-                ) from exc
-            raise RuntimeError(
-                '备用邮箱页面已跳转，但验证码输入框未出现'
-            ) from exc
-
     def handle_recovery_email_prompt(self, page, target_email=""):
         """填写 Microsoft 强制显示的备用邮箱页面。"""
         recovery_input = page.locator(
@@ -434,16 +377,7 @@ class BaseBrowserController(ABC):
                 )
                 return False
 
-            try:
-                code_input = self.wait_for_recovery_code_step(
-                    page,
-                    recovery_input,
-                    next_button,
-                )
-            except Exception as exc:
-                print(f'[Error: Recovery Email] - 提交备用邮箱失败：{exc}')
-                return False
-
+            self.smooth_click(page, next_button)
             if not self.recovery_mailbox_enabled:
                 print(
                     f'[Action: Recovery Email] - 已随机填写 {account.email}。'
@@ -452,11 +386,17 @@ class BaseBrowserController(ABC):
                 return True
 
             try:
-                print('[Recovery Email] Polling Graph for code (timeout=%ss, interval=%ss).' % (mailbox_client.timeout_seconds, mailbox_client.poll_interval_seconds), flush=True)
                 code = mailbox_client.wait_for_code(
                     requested_at=requested_at,
                     target_email=target_email,
                 )
+                code_input = page.locator(
+                    'input[name="VerificationCode"], input[name="otc"], '
+                    'input[name="code"], input[type="tel"], input[inputmode="numeric"], '
+                    'input[aria-label*="code" i], input[placeholder*="code" i], '
+                    'input[aria-label*="代码"], input[placeholder*="代码"]'
+                ).first
+                code_input.wait_for(state='visible', timeout=15000)
                 code_input.fill(code)
 
                 submit_button = None
@@ -474,7 +414,10 @@ class BaseBrowserController(ABC):
                     raise RuntimeError('验证码已填写，但没有找到提交按钮')
 
                 self.smooth_click(page, submit_button)
-                print(f'[Action: Recovery Email] - 已使用 {account.email} 自动读取并填写验证码。', flush=True)
+                print(
+                    f'[Action: Recovery Email] - 已使用 {account.email} '
+                    '自动读取并填写验证码。'
+                )
             except Exception as exc:
                 print(f'[Error: Recovery Email] - 自动取码或填写失败：{exc}')
                 return False
@@ -631,7 +574,7 @@ class BaseBrowserController(ABC):
         firstname = fake.first_name()
         year = str(random.randint(1990, 2006))
         month = str(random.randint(1, 12))
-        day = str(random.randint(1, 21))
+        day = str(random.randint(1, 27))
         start_time = time.time()
 
         def first_visible(selectors, timeout=8000):
@@ -905,5 +848,4 @@ class BaseBrowserController(ABC):
             email,
             password,
         )
-
 
