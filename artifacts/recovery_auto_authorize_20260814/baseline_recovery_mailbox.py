@@ -625,7 +625,7 @@ class RecoveryMailboxClient:
                             ):
                                 account_candidate.click(timeout=7000)
                                 action_taken = True
-                                page.wait_for_timeout(1000)
+                                page.wait_for_timeout(600)
                                 break
                         except Exception:
                             continue
@@ -659,7 +659,7 @@ class RecoveryMailboxClient:
                         ):
                             password_method.click(timeout=7000)
                             action_taken = True
-                            page.wait_for_timeout(1000)
+                            page.wait_for_timeout(600)
                             break
                     except Exception:
                         continue
@@ -685,7 +685,7 @@ class RecoveryMailboxClient:
                                 "input[type='submit']"
                             ).first.click(timeout=7000)
                             action_taken = True
-                            page.wait_for_timeout(1000)
+                            page.wait_for_timeout(600)
                             break
                     except Exception:
                         continue
@@ -705,7 +705,7 @@ class RecoveryMailboxClient:
                         if button.count() > 0 and button.is_visible():
                             button.click(timeout=7000)
                             action_taken = True
-                            page.wait_for_timeout(1000)
+                            page.wait_for_timeout(600)
                             break
                     except Exception:
                         continue

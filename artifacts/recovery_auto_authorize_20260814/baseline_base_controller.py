@@ -18,7 +18,6 @@ from recovery_mailbox import (
     get_accounts_file,
     list_authorized_emails,
     load_backup_accounts,
-    save_outlook_token_record,
 )
 
 
@@ -241,14 +240,11 @@ class BaseBrowserController(ABC):
         )
         if assigned_account is not None:
             account = assigned_account
-            if self.recovery_mailbox_enabled:
-                client = self.authorize_recovery_mailbox(account)
-            else:
-                client = RecoveryMailboxClient(
-                    self.config,
-                    self.proxy,
-                    account=account,
-                )
+            client = RecoveryMailboxClient(
+                self.config,
+                self.proxy,
+                account=account,
+            )
             return account, client
 
         accounts = load_backup_accounts(self.recovery_accounts_file)
@@ -266,9 +262,10 @@ class BaseBrowserController(ABC):
                 if account.email in authorized_emails
             ]
             if not candidates:
-                account = random.choice(accounts)
-                client = self.authorize_recovery_mailbox(account)
-                return account, client
+                raise RuntimeError(
+                    "没有已授权的备用邮箱，请先运行 "
+                    "authorize_recovery_mailbox.py"
+                )
 
         account = random.choice(candidates)
         client = RecoveryMailboxClient(
@@ -277,51 +274,6 @@ class BaseBrowserController(ABC):
             account=account,
         )
         return account, client
-
-    def authorize_recovery_mailbox(self, account):
-        """Authorize one unapproved recovery mailbox in the current browser."""
-        client = RecoveryMailboxClient(
-            self.config,
-            self.proxy,
-            account=account,
-        )
-        if client.has_authorization():
-            return client
-
-        browser = self.get_thread_browser()
-        if not browser:
-            raise RuntimeError("启动备用邮箱授权浏览器失败")
-
-        context_options = {}
-        init_script = None
-        runtime_profile = None
-        if self.fingerprint_enabled:
-            runtime_profile = self.get_fingerprint_profile(browser)
-            context_options = build_context_options(runtime_profile)
-            init_script = build_init_script(runtime_profile)
-
-        print(
-            f'[Action: Recovery Email] - {account.email} 未授权，'
-            '开始自动授权。'
-        )
-        token_payload = client.authorize_with_browser(
-            browser,
-            interactive=False,
-            timeout_seconds=300,
-            context_options=context_options,
-            init_script=init_script,
-            runtime_profile=runtime_profile,
-        )
-        outlook_token_path = save_outlook_token_record(
-            self.config,
-            account,
-            token_payload,
-        )
-        print(
-            f'[Action: Recovery Email] - {account.email} 自动授权成功；'
-            f'Outlook 令牌已保存至 {outlook_token_path}'
-        )
-        return client
 
     def get_recovery_mailbox_lock(self, email):
         with self.recovery_locks_guard:

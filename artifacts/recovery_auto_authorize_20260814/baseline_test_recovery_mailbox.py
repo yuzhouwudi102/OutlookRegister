@@ -161,14 +161,6 @@ class RecoveryMailboxTests(unittest.TestCase):
         self.assertLess(password_method_index, generic_email_index)
         self.assertIn("account_picker_visible", source)
 
-    def test_authorization_waits_one_second_after_navigation_actions(self):
-        source = Path("recovery_mailbox.py").read_text(encoding="utf-8")
-        flow = source[source.index("def authorize_with_browser("):]
-
-        self.assertEqual(flow.count("page.wait_for_timeout(1000)"), 4)
-        self.assertNotIn("page.wait_for_timeout(600)", flow)
-        self.assertIn("page.wait_for_timeout(250)", flow)
-
     def test_extracts_keyword_code(self):
         self.assertEqual(
             extract_security_code("Your Microsoft security code is 7654321."),
@@ -319,108 +311,6 @@ class RecoveryMailboxTests(unittest.TestCase):
             mocked_choice.assert_called_once()
             self.assertEqual(selected.email, "two@example.com")
             self.assertEqual(client.email, "two@example.com")
-
-    def test_registration_authorizes_when_no_authorized_account_exists(self):
-        with tempfile.TemporaryDirectory() as directory:
-            config = build_config(directory)
-            accounts_file = Path(config["recovery_mailbox"]["accounts_file"])
-            accounts_file.write_text(
-                "one@example.com: pass-one\n",
-                encoding="utf-8",
-            )
-            account = load_backup_accounts(accounts_file)[0]
-            controller = object.__new__(DummyController)
-            controller.recovery_accounts_file = accounts_file
-            controller.recovery_mailbox_enabled = True
-            controller.config = config
-            controller.proxy = ""
-            controller.fingerprint_enabled = False
-            controller.thread_local = SimpleNamespace()
-            browser = Mock()
-            controller.get_thread_browser = Mock(return_value=browser)
-            token_payload = {
-                "refresh_token": "refresh",
-                "access_token": "access",
-                "expires_at": 1234.5,
-            }
-
-            with patch(
-                "controllers.base_controller.random.choice",
-                return_value=account,
-            ), patch.object(
-                RecoveryMailboxClient,
-                "authorize_with_browser",
-                return_value=token_payload,
-            ) as mocked_authorize, patch(
-                "controllers.base_controller.save_outlook_token_record",
-                return_value=Path(directory) / "outlook_token.txt",
-            ) as mocked_save:
-                selected, client = controller.choose_recovery_mailbox()
-
-            self.assertEqual(selected.email, account.email)
-            self.assertEqual(client.email, account.email)
-            mocked_authorize.assert_called_once_with(
-                browser,
-                interactive=False,
-                timeout_seconds=300,
-                context_options={},
-                init_script=None,
-                runtime_profile=None,
-            )
-            mocked_save.assert_called_once_with(
-                config,
-                account,
-                token_payload,
-            )
-
-    def test_loop_assigned_account_is_authorized_when_needed(self):
-        with tempfile.TemporaryDirectory() as directory:
-            config = build_config(directory)
-            account = RecoveryMailboxAccount(
-                "loop@example.com",
-                "loop-password",
-            )
-            controller = object.__new__(DummyController)
-            controller.recovery_mailbox_enabled = True
-            controller.config = config
-            controller.proxy = ""
-            controller.fingerprint_enabled = False
-            controller.thread_local = SimpleNamespace(
-                loop_recovery_account=account,
-            )
-            browser = Mock()
-            controller.get_thread_browser = Mock(return_value=browser)
-            token_payload = {
-                "refresh_token": "refresh",
-                "access_token": "access",
-                "expires_at": 1234.5,
-            }
-
-            with patch.object(
-                RecoveryMailboxClient,
-                "authorize_with_browser",
-                return_value=token_payload,
-            ) as mocked_authorize, patch(
-                "controllers.base_controller.save_outlook_token_record",
-                return_value=Path(directory) / "outlook_token.txt",
-            ) as mocked_save:
-                selected, client = controller.choose_recovery_mailbox()
-
-            self.assertEqual(selected.email, account.email)
-            self.assertEqual(client.email, account.email)
-            mocked_authorize.assert_called_once_with(
-                browser,
-                interactive=False,
-                timeout_seconds=300,
-                context_options={},
-                init_script=None,
-                runtime_profile=None,
-            )
-            mocked_save.assert_called_once_with(
-                config,
-                account,
-                token_payload,
-            )
 
     def test_migrates_legacy_single_token(self):
         with tempfile.TemporaryDirectory() as directory:
