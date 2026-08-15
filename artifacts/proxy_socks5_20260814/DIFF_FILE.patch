@@ -1,0 +1,277 @@
+--- config.json (baseline)
++++ config.json (modified)
+@@ -11,7 +11,7 @@
+         "message_lookback_seconds": 30,
+         "code_pattern": "(?<!\\d)(\\d{6,8})(?!\\d)"
+     },
+-    "proxy": "http://us.cliproxy.io:3010:5ffs1247881-region-US-sid-cq2S4Hs3-t-5:tgvefysv",
++    "proxy": "socks5://us.cliproxy.io:3010:5ffs1247881-region-US-sid-1Z93q3w7-t-5:tgvefysv",
+     "fingerprint": {
+         "enabled": true,
+         "headless": false,
+--- authorize_recovery_mailbox.py (baseline)
++++ authorize_recovery_mailbox.py (modified)
+@@ -15,6 +15,7 @@
+     load_backup_accounts,
+     save_outlook_token_record,
+ )
++from proxy_utils import build_playwright_proxy, build_requests_proxy
+ 
+ 
+ def load_config():
+@@ -35,7 +36,7 @@
+ 
+ def main():
+     config = load_config()
+-    proxy = (config.get("proxy") or "").strip()
++    proxy = config.get("proxy") or ""
+     accounts_file = get_accounts_file(config)
+     accounts, authorized_emails, pending_accounts = get_authorization_status(
+         config
+@@ -60,11 +61,7 @@
+     failed_accounts = []
+     with sync_playwright() as playwright:
+         fingerprint_config = config.get("fingerprint", {})
+-        proxy_settings = (
+-            {"server": proxy, "bypass": "localhost"}
+-            if proxy
+-            else None
+-        )
++        proxy_settings = build_playwright_proxy(proxy)
+         browser = playwright.chromium.launch(
+             headless=False,
+             args=build_launch_args(fingerprint_config),
+@@ -89,7 +86,7 @@
+                 )
+                 client = RecoveryMailboxClient(
+                     config,
+-                    proxy,
++                    build_requests_proxy(proxy) or "",
+                     account=account,
+                 )
+                 try:
+--- recovery_mailbox.py (baseline)
++++ recovery_mailbox.py (modified)
+@@ -14,6 +14,7 @@
+ from urllib.parse import parse_qs, quote
+ 
+ import requests
++from proxy_utils import build_requests_proxy
+ 
+ from browser_fingerprint import apply_runtime_overrides
+ 
+@@ -426,7 +427,7 @@
+             "code_pattern",
+             DEFAULT_CODE_PATTERN,
+         )
+-        self.proxy = proxy.strip()
++        self.proxy = build_requests_proxy(proxy) or ""
+         migrate_legacy_token(config)
+ 
+     @property
+--- controllers/patchright_controller.py (baseline)
++++ controllers/patchright_controller.py (modified)
+@@ -2,6 +2,7 @@
+ import time
+ from patchright.sync_api import sync_playwright
+ from .base_controller import BaseBrowserController
++from proxy_utils import build_playwright_proxy
+ 
+ 
+ class PatchrightController(BaseBrowserController):
+@@ -10,10 +11,7 @@
+         try:
+             p = sync_playwright().start() 
+ 
+-            proxy_settings = {
+-                "server": self.proxy,
+-                "bypass": "localhost",
+-            } if self.proxy else None
++            proxy_settings = build_playwright_proxy(self.proxy)
+ 
+             b = p.chromium.launch(
+                 headless=self.browser_headless,
+--- controllers/playwright_controller.py (baseline)
++++ controllers/playwright_controller.py (modified)
+@@ -1,6 +1,7 @@
+ import json
+ from playwright.sync_api import sync_playwright
+ from .base_controller import BaseBrowserController
++from proxy_utils import build_playwright_proxy
+ 
+ 
+ class PlaywrightController(BaseBrowserController):
+@@ -15,10 +16,7 @@
+         try:
+             p = sync_playwright().start()
+ 
+-            proxy_settings = {
+-                "server": self.proxy,
+-                "bypass": "localhost",
+-            } if self.proxy else None
++            proxy_settings = build_playwright_proxy(self.proxy)
+             launch_options = {
+                 "headless": self.browser_headless,
+                 "args": self.get_browser_launch_args(),
+--- proxy_utils.py (baseline)
++++ proxy_utils.py (modified)
+@@ -0,0 +1,105 @@
++"""Normalize proxy settings for Playwright and requests."""
++
++from urllib.parse import quote
++
++
++def _split_proxy_text(value, default_scheme="http"):
++    raw = str(value or "").strip()
++    if not raw:
++        return None
++
++    if "://" in raw:
++        scheme, authority = raw.split("://", 1)
++    else:
++        scheme, authority = default_scheme, raw
++    scheme = scheme.lower().strip()
++
++    username = ""
++    password = ""
++    if "@" in authority:
++        userinfo, authority = authority.rsplit("@", 1)
++        if ":" in userinfo:
++            username, password = userinfo.split(":", 1)
++        else:
++            username = userinfo
++    else:
++        parts = authority.split(":", 3)
++        if len(parts) == 4 and parts[1].isdigit():
++            authority, username, password = (
++                f"{parts[0]}:{parts[1]}",
++                parts[2],
++                parts[3],
++            )
++
++    if ":" not in authority:
++        raise ValueError("代理地址必须包含 host:port")
++    host, port = authority.rsplit(":", 1)
++    if not host or not port.isdigit():
++        raise ValueError("代理地址的 host 或 port 无效")
++
++    return {
++        "scheme": scheme,
++        "host": host,
++        "port": port,
++        "username": username,
++        "password": password,
++    }
++
++
++def parse_proxy(proxy, default_scheme="http"):
++    """Parse string or structured proxy settings into normalized fields."""
++    if not proxy:
++        return None
++    if isinstance(proxy, dict):
++        parsed = _split_proxy_text(
++            proxy.get("server", ""),
++            default_scheme=default_scheme,
++        )
++        if parsed is None:
++            return None
++        parsed["username"] = str(
++            proxy.get("username", parsed["username"])
++        ).strip()
++        parsed["password"] = str(
++            proxy.get("password", parsed["password"])
++        )
++        return parsed
++    return _split_proxy_text(proxy, default_scheme=default_scheme)
++
++
++def build_playwright_proxy(proxy):
++    parsed = parse_proxy(proxy, default_scheme="http")
++    if parsed is None:
++        return None
++    scheme = "socks5" if parsed["scheme"] in ("socks5", "socks5h") else parsed["scheme"]
++    server = f'{scheme}://{parsed["host"]}:{parsed["port"]}'
++    result = {"server": server, "bypass": "localhost"}
++    if scheme == "socks5" and parsed["username"]:
++        # Chromium rejects Playwright's separate username/password fields
++        # for SOCKS5. Embedding userinfo lets the browser start the proxy.
++        user = quote(parsed["username"], safe="")
++        password = quote(parsed["password"], safe="")
++        result["server"] = (
++            f"socks5://{user}:{password}@"
++            f'{parsed["host"]}:{parsed["port"]}'
++        )
++    else:
++        if parsed["username"]:
++            result["username"] = parsed["username"]
++        if parsed["password"]:
++            result["password"] = parsed["password"]
++    return result
++
++
++def build_requests_proxy(proxy):
++    parsed = parse_proxy(proxy, default_scheme="http")
++    if parsed is None:
++        return None
++    scheme = "socks5h" if parsed["scheme"] in ("socks5", "socks5h") else parsed["scheme"]
++    auth = ""
++    if parsed["username"]:
++        auth = quote(parsed["username"], safe="")
++        if parsed["password"]:
++            auth += ":" + quote(parsed["password"], safe="")
++        auth += "@"
++    return f'{scheme}://{auth}{parsed["host"]}:{parsed["port"]}'
+--- tests/test_proxy_utils.py (baseline)
++++ tests/test_proxy_utils.py (modified)
+@@ -0,0 +1,51 @@
++import unittest
++
++from proxy_utils import (
++    build_playwright_proxy,
++    build_requests_proxy,
++    parse_proxy,
++)
++
++
++class ProxyUtilsTests(unittest.TestCase):
++    def test_parses_socks5_host_port_user_password(self):
++        parsed = parse_proxy(
++            "socks5://us.cliproxy.io:3010:user-name:secret"
++        )
++        self.assertEqual(
++            parsed,
++            {
++                "scheme": "socks5",
++                "host": "us.cliproxy.io",
++                "port": "3010",
++                "username": "user-name",
++                "password": "secret",
++            },
++        )
++
++    def test_builds_playwright_socks5_settings(self):
++        self.assertEqual(
++            build_playwright_proxy(
++                "socks5://us.cliproxy.io:3010:user-name:secret"
++            ),
++            {
++                "server": "socks5://user-name:secret@us.cliproxy.io:3010",
++                "bypass": "localhost",
++            },
++        )
++
++    def test_builds_requests_socks5h_url(self):
++        self.assertEqual(
++            build_requests_proxy(
++                "socks5://us.cliproxy.io:3010:user-name:secret"
++            ),
++            "socks5h://user-name:secret@us.cliproxy.io:3010",
++        )
++
++    def test_keeps_legacy_http_proxy_compatible(self):
++        self.assertEqual(
++            build_playwright_proxy(
++                "http://us.cliproxy.io:3010:user-name:secret"
++            )["server"],
++            "http://us.cliproxy.io:3010",
++        )

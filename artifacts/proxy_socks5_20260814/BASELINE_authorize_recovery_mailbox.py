@@ -15,7 +15,6 @@ from recovery_mailbox import (
     load_backup_accounts,
     save_outlook_token_record,
 )
-from proxy_utils import build_playwright_proxy, build_requests_proxy
 
 
 def load_config():
@@ -36,7 +35,7 @@ def get_authorization_status(config):
 
 def main():
     config = load_config()
-    proxy = config.get("proxy") or ""
+    proxy = (config.get("proxy") or "").strip()
     accounts_file = get_accounts_file(config)
     accounts, authorized_emails, pending_accounts = get_authorization_status(
         config
@@ -61,7 +60,11 @@ def main():
     failed_accounts = []
     with sync_playwright() as playwright:
         fingerprint_config = config.get("fingerprint", {})
-        proxy_settings = build_playwright_proxy(proxy)
+        proxy_settings = (
+            {"server": proxy, "bypass": "localhost"}
+            if proxy
+            else None
+        )
         browser = playwright.chromium.launch(
             headless=False,
             args=build_launch_args(fingerprint_config),
@@ -86,7 +89,7 @@ def main():
                 )
                 client = RecoveryMailboxClient(
                     config,
-                    build_requests_proxy(proxy) or "",
+                    proxy,
                     account=account,
                 )
                 try:

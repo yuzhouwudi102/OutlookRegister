@@ -14,7 +14,6 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote
 
 import requests
-from proxy_utils import build_requests_proxy
 
 from browser_fingerprint import apply_runtime_overrides
 
@@ -427,7 +426,7 @@ class RecoveryMailboxClient:
             "code_pattern",
             DEFAULT_CODE_PATTERN,
         )
-        self.proxy = build_requests_proxy(proxy) or ""
+        self.proxy = proxy.strip()
         migrate_legacy_token(config)
 
     @property

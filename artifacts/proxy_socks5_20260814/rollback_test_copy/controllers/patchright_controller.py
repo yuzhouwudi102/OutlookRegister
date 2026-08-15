@@ -2,7 +2,6 @@ import random
 import time
 from patchright.sync_api import sync_playwright
 from .base_controller import BaseBrowserController
-from proxy_utils import build_playwright_proxy
 
 
 class PatchrightController(BaseBrowserController):
@@ -11,7 +10,10 @@ class PatchrightController(BaseBrowserController):
         try:
             p = sync_playwright().start() 
 
-            proxy_settings = build_playwright_proxy(self.proxy)
+            proxy_settings = {
+                "server": self.proxy,
+                "bypass": "localhost",
+            } if self.proxy else None
 
             b = p.chromium.launch(
                 headless=self.browser_headless,

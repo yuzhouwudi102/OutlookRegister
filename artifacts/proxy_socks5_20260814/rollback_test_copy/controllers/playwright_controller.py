@@ -1,7 +1,6 @@
 import json
 from playwright.sync_api import sync_playwright
 from .base_controller import BaseBrowserController
-from proxy_utils import build_playwright_proxy
 
 
 class PlaywrightController(BaseBrowserController):
@@ -16,7 +15,10 @@ class PlaywrightController(BaseBrowserController):
         try:
             p = sync_playwright().start()
 
-            proxy_settings = build_playwright_proxy(self.proxy)
+            proxy_settings = {
+                "server": self.proxy,
+                "bypass": "localhost",
+            } if self.proxy else None
             launch_options = {
                 "headless": self.browser_headless,
                 "args": self.get_browser_launch_args(),
