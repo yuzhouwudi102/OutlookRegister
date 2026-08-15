@@ -1,0 +1,99 @@
+--- main.py (baseline)
++++ main.py (modified)
+@@ -10,6 +10,7 @@
+     build_loop_token_payload,
+     clear_and_write_loop_backup,
+     validate_loop_creation,
++    write_recovery_mailbox_token,
+ )
+ 
+ 
+@@ -69,6 +70,14 @@
+                         f"{email}{controller.email_suffix}",
+                         password,
+                         token_payload,
++                    )
++                    token_path = write_recovery_mailbox_token(
++                        controller.config,
++                        token_payload,
++                    )
++                    print(
++                        f"[Saved: Recovery Token] - {token_path}",
++                        flush=True,
+                     )
+             return True
+         else:
+--- recovery_mailbox.py (baseline)
++++ recovery_mailbox.py (modified)
+@@ -226,6 +226,16 @@
+ 
+ def write_loop_token_file(config, token_payload):
+     path = get_loop_token_file(config)
++    _atomic_write_json(path, token_payload)
++    return path
++
++
++def write_recovery_mailbox_token(config, token_payload):
++    """Write a per-email JSON token beside the recovery-mailbox tokens."""
++    email = str(token_payload.get("email", "")).strip().lower()
++    if not email:
++        raise ValueError("token_payload.email 不能为空")
++    path = token_file_for_email(get_token_dir(config), email)
+     _atomic_write_json(path, token_payload)
+     return path
+ 
+--- tests/test_recovery_mailbox.py (baseline)
++++ tests/test_recovery_mailbox.py (modified)
+@@ -29,6 +29,7 @@
+     token_file_for_email,
+     save_outlook_token_record,
+     validate_loop_creation,
++    write_recovery_mailbox_token,
+ )
+ 
+ 
+@@ -79,6 +80,30 @@
+ 
+ 
+ class RecoveryMailboxTests(unittest.TestCase):
++    def test_writes_per_email_recovery_token_json(self):
++        with tempfile.TemporaryDirectory() as directory:
++            config = build_config(directory)
++            payload = build_loop_token_payload(
++                "New@Example.com",
++                "refresh",
++                "access",
++                1234.5,
++            )
++
++            token_path = write_recovery_mailbox_token(config, payload)
++
++            self.assertEqual(
++                token_path,
++                token_file_for_email(
++                    config["recovery_mailbox"]["token_dir"],
++                    "new@example.com",
++                ),
++            )
++            self.assertEqual(
++                json.loads(token_path.read_text(encoding="utf-8")),
++                payload,
++            )
++
+     def test_recovery_email_retries_next_before_mailbox_polling(self):
+         controller = object.__new__(DummyController)
+         controller.smooth_click = Mock()
+@@ -797,6 +822,13 @@
+                         "expires_at": 1234.5,
+                     },
+                 )
++                per_email_token = json.loads(
++                    token_file_for_email(
++                        "Results/recovery_mailbox_token",
++                        "created@outlook.com",
++                    ).read_text(encoding="utf-8")
++                )
++                self.assertEqual(per_email_token, loop_token)
+             finally:
+                 os.chdir(original_cwd)
+ 

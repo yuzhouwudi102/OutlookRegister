@@ -10,7 +10,6 @@ from recovery_mailbox import (
     build_loop_token_payload,
     clear_and_write_loop_backup,
     validate_loop_creation,
-    write_recovery_mailbox_token,
 )
 
 
@@ -70,14 +69,6 @@ def process_single_flow(controller, loop_account=None):
                         f"{email}{controller.email_suffix}",
                         password,
                         token_payload,
-                    )
-                    token_path = write_recovery_mailbox_token(
-                        controller.config,
-                        token_payload,
-                    )
-                    print(
-                        f"[Saved: Recovery Token] - {token_path}",
-                        flush=True,
                     )
             return True
         else:

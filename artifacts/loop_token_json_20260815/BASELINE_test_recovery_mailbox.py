@@ -29,7 +29,6 @@ from recovery_mailbox import (
     token_file_for_email,
     save_outlook_token_record,
     validate_loop_creation,
-    write_recovery_mailbox_token,
 )
 
 
@@ -80,30 +79,6 @@ def build_config(directory):
 
 
 class RecoveryMailboxTests(unittest.TestCase):
-    def test_writes_per_email_recovery_token_json(self):
-        with tempfile.TemporaryDirectory() as directory:
-            config = build_config(directory)
-            payload = build_loop_token_payload(
-                "New@Example.com",
-                "refresh",
-                "access",
-                1234.5,
-            )
-
-            token_path = write_recovery_mailbox_token(config, payload)
-
-            self.assertEqual(
-                token_path,
-                token_file_for_email(
-                    config["recovery_mailbox"]["token_dir"],
-                    "new@example.com",
-                ),
-            )
-            self.assertEqual(
-                json.loads(token_path.read_text(encoding="utf-8")),
-                payload,
-            )
-
     def test_recovery_email_retries_next_before_mailbox_polling(self):
         controller = object.__new__(DummyController)
         controller.smooth_click = Mock()
@@ -822,13 +797,6 @@ class RecoveryMailboxTests(unittest.TestCase):
                         "expires_at": 1234.5,
                     },
                 )
-                per_email_token = json.loads(
-                    token_file_for_email(
-                        "Results/recovery_mailbox_token",
-                        "created@outlook.com",
-                    ).read_text(encoding="utf-8")
-                )
-                self.assertEqual(per_email_token, loop_token)
             finally:
                 os.chdir(original_cwd)
 

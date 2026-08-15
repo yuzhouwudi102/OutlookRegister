@@ -230,16 +230,6 @@ def write_loop_token_file(config, token_payload):
     return path
 
 
-def write_recovery_mailbox_token(config, token_payload):
-    """Write a per-email JSON token beside the recovery-mailbox tokens."""
-    email = str(token_payload.get("email", "")).strip().lower()
-    if not email:
-        raise ValueError("token_payload.email 不能为空")
-    path = token_file_for_email(get_token_dir(config), email)
-    _atomic_write_json(path, token_payload)
-    return path
-
-
 def clear_and_write_loop_backup(config, email, password, token_payload):
     accounts_path = get_accounts_file(config)
     atomic_write_text(

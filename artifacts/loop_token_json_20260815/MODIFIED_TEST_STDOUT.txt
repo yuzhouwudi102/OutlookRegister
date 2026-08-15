@@ -1,0 +1,16 @@
+[Action: Recovery Email] - loop@example.com 未授权，开始自动授权。
+[Action: Recovery Email] - loop@example.com 自动授权成功；Outlook 令牌已保存至 C:\WINDOWS\TEMP\tmp1iyd13g9\outlook_token.txt
+[Attempt: Email Registration] - created@outlook.com: CreatedPassword!
+[Success: TokenAuth] - created@outlook.com
+[Saved: Recovery Token] - Results\recovery_mailbox_token\created_outlook.com_cbbf265206.json
+已提交 1/2 任务.
+已提交 2/2 任务.
+
+[Result] - 共: 2, 成功 2, 失败 0
+[Saved: Email Account] - new-account@outlook.com -> C:\WINDOWS\TEMP\tmpmq3vkvwm\unlogged_email.txt
+[Saved: Email Account] - new-account@outlook.com -> C:\WINDOWS\TEMP\tmpmq3vkvwm\unlogged_email.txt
+[Recovery Email] Next clicked; confirming verification-code page.
+[Recovery Email] Recovery page is still visible; retrying Next with a direct locator click.
+[Action: Recovery Email] - one@example.com 未授权，开始自动授权。
+[Action: Recovery Email] - one@example.com 自动授权成功；Outlook 令牌已保存至 C:\WINDOWS\TEMP\tmpxviuxbcy\outlook_token.txt
+[Success: Email Registration] - successful-account@outlook.com
