@@ -41,3 +41,6 @@ dist/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Local Chinese translation of the installed email-register skill
+email-register-zh-CN.md
