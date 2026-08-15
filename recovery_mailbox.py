@@ -250,7 +250,7 @@ def clear_and_write_loop_backup(config, email, password, token_payload):
 
 
 def write_loop_backup_accounts(config, accounts, token_payload):
-    """Atomically replace the loop backup with all accounts created this run."""
+    """Atomically persist the current Loop Creation recovery-mailbox set."""
     lines = []
     for email, password in accounts.items():
         normalized_email = str(email).strip().lower()
@@ -260,6 +260,42 @@ def write_loop_backup_accounts(config, accounts, token_payload):
     accounts_path = get_accounts_file(config)
     atomic_write_text(accounts_path, "".join(lines))
     return write_loop_token_file(config, token_payload)
+
+
+def replace_loop_backup_account(
+    config,
+    accounts,
+    used_account,
+    email,
+    password,
+    token_payload,
+):
+    """Replace one successfully used recovery mailbox with its new account.
+
+    ``accounts`` represents the complete backup list for the running Loop
+    Creation batch.  Keeping every untouched entry means a failed task leaves
+    its assigned recovery mailbox available for the next run.
+    """
+    used_email = str(getattr(used_account, "email", "")).strip().lower()
+    new_email = str(email).strip().lower()
+    updated_accounts = {}
+    replaced = False
+
+    for existing_email, existing_password in accounts.items():
+        normalized_email = str(existing_email).strip().lower()
+        if normalized_email == used_email:
+            updated_accounts[new_email] = password
+            replaced = True
+        elif normalized_email:
+            updated_accounts[normalized_email] = existing_password
+
+    # Keep direct callers resilient if the current account was not preloaded.
+    if not replaced and new_email:
+        updated_accounts[new_email] = password
+
+    accounts.clear()
+    accounts.update(updated_accounts)
+    return write_loop_backup_accounts(config, accounts, token_payload)
 
 
 def validate_loop_creation(config, max_tasks):

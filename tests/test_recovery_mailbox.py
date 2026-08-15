@@ -29,6 +29,7 @@ from recovery_mailbox import (
     token_file_for_email,
     save_outlook_token_record,
     validate_loop_creation,
+    replace_loop_backup_account,
     write_loop_backup_accounts,
     write_recovery_mailbox_token,
 )
@@ -739,6 +740,43 @@ class RecoveryMailboxTests(unittest.TestCase):
                 "second@example.com: second-password\n",
             )
 
+    def test_loop_creation_replaces_only_the_successful_mailbox(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = build_config(directory)
+            accounts_file = Path(config["recovery_mailbox"]["accounts_file"])
+            accounts = {
+                "used@example.com": "used-password",
+                "failed@example.com": "failed-password",
+            }
+            token_payload = build_loop_token_payload(
+                "created@example.com",
+                "refresh",
+                "access",
+                1234.5,
+            )
+
+            replace_loop_backup_account(
+                config,
+                accounts,
+                RecoveryMailboxAccount("used@example.com", "used-password"),
+                "created@example.com",
+                "created-password",
+                token_payload,
+            )
+
+            self.assertEqual(
+                accounts_file.read_text(encoding="utf-8"),
+                "created@example.com: created-password\n"
+                "failed@example.com: failed-password\n",
+            )
+            self.assertEqual(
+                accounts,
+                {
+                    "created@example.com": "created-password",
+                    "failed@example.com": "failed-password",
+                },
+            )
+
     def test_loop_creation_uses_each_assigned_account_once(self):
         import main
 
@@ -938,6 +976,72 @@ class RecoveryMailboxTests(unittest.TestCase):
                     accounts_file.read_text(encoding="utf-8"),
                     "first@outlook.com: FirstPassword!\n"
                     "second@outlook.com: SecondPassword!\n",
+                )
+            finally:
+                os.chdir(original_cwd)
+
+    def test_loop_creation_keeps_the_mailbox_for_a_failed_task(self):
+        import main
+
+        with tempfile.TemporaryDirectory() as directory:
+            original_cwd = os.getcwd()
+            os.chdir(directory)
+            try:
+                Path("Results").mkdir()
+                config = build_config(directory)
+                accounts_file = Path(
+                    config["recovery_mailbox"]["accounts_file"]
+                )
+                accounts_file.write_text(
+                    "used@example.com: used-password\n"
+                    "failed@example.com: failed-password\n",
+                    encoding="utf-8",
+                )
+                config["oauth2"]["Loop Creation"] = True
+                config["oauth2"]["enable_oauth2"] = True
+                controller = Mock()
+                controller.email_suffix = "@outlook.com"
+                controller.enable_oauth2 = True
+                controller.loop_creation_enabled = True
+                controller.loop_creation_lock = threading.Lock()
+                controller.config = config
+                controller.get_thread_page.return_value = Mock()
+                controller.outlook_register.side_effect = (
+                    lambda _page, address, _password: address == "created"
+                )
+                controller.clean_up = Mock()
+
+                with patch.object(
+                    main,
+                    "random_email",
+                    side_effect=["created", "failed"],
+                ), patch.object(
+                    main,
+                    "generate_strong_password",
+                    return_value="NewPassword!",
+                ), patch.object(
+                    main,
+                    "get_access_token",
+                    return_value=("refresh", "access", 1234.5),
+                ), patch("builtins.open", mock_open()):
+                    main.run_concurrent_flows(
+                        controller,
+                        concurrent_flows=2,
+                        max_tasks=2,
+                        loop_accounts=[
+                            RecoveryMailboxAccount(
+                                "used@example.com", "used-password"
+                            ),
+                            RecoveryMailboxAccount(
+                                "failed@example.com", "failed-password"
+                            ),
+                        ],
+                    )
+
+                self.assertEqual(
+                    accounts_file.read_text(encoding="utf-8"),
+                    "created@outlook.com: NewPassword!\n"
+                    "failed@example.com: failed-password\n",
                 )
             finally:
                 os.chdir(original_cwd)

@@ -8,8 +8,8 @@ from controllers.patchright_controller import PatchrightController
 from controllers.playwright_controller import PlaywrightController
 from recovery_mailbox import (
     build_loop_token_payload,
+    replace_loop_backup_account,
     validate_loop_creation,
-    write_loop_backup_accounts,
     write_recovery_mailbox_token,
 )
 
@@ -72,13 +72,17 @@ def process_single_flow(controller, loop_account=None):
                     )
                     if not isinstance(created_accounts, dict):
                         created_accounts = {}
+                        if loop_account is not None:
+                            created_accounts[
+                                loop_account.email.strip().lower()
+                            ] = loop_account.password
                         controller.loop_created_accounts = created_accounts
-                    created_accounts[
-                        f"{email}{controller.email_suffix}".strip().lower()
-                    ] = password
-                    write_loop_backup_accounts(
+                    replace_loop_backup_account(
                         controller.config,
                         created_accounts,
+                        loop_account,
+                        f"{email}{controller.email_suffix}",
+                        password,
                         token_payload,
                     )
                     token_path = write_recovery_mailbox_token(
@@ -112,9 +116,12 @@ def run_concurrent_flows(
     failed_tasks = 0
 
     if loop_accounts is not None:
-        # Start a fresh next-generation backup for this Loop Creation run.
-        # process_single_flow updates it while holding loop_creation_lock.
-        controller.loop_created_accounts = {}
+        # Start with every assigned recovery mailbox.  A task replaces only
+        # its own mailbox after full registration and token acquisition.
+        controller.loop_created_accounts = {
+            account.email.strip().lower(): account.password
+            for account in loop_accounts
+        }
 
     with ThreadPoolExecutor(max_workers=concurrent_flows) as executor:
         running_futures = set()
