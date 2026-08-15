@@ -1,5 +1,5 @@
 # OutlookRegister
-
+[English](README_EN.md)
 OutlookRegister 是一个基于 **Patchright / Playwright** 的 Outlook 邮箱注册自动化项目。程序可以并发执行注册流程、应用浏览器指纹、处理当前项目支持的验证页面，并在注册完成后获取 OAuth2 令牌。
 
 项目还支持：
