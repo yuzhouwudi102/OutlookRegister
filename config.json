@@ -44,8 +44,8 @@
     },
     "bot_protection_wait": 50,
     "max_captcha_retries": 8,
-    "concurrent_flows": 1,
-    "max_tasks": 1,
+    "concurrent_flows": 2,
+    "max_tasks": 2,
    "oauth2": {
     "enable_oauth2": true,
     "Loop Creation": true,

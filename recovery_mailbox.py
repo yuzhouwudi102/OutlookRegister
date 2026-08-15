@@ -249,6 +249,19 @@ def clear_and_write_loop_backup(config, email, password, token_payload):
     return write_loop_token_file(config, token_payload)
 
 
+def write_loop_backup_accounts(config, accounts, token_payload):
+    """Atomically replace the loop backup with all accounts created this run."""
+    lines = []
+    for email, password in accounts.items():
+        normalized_email = str(email).strip().lower()
+        if normalized_email:
+            lines.append(f"{normalized_email}: {password}\n")
+
+    accounts_path = get_accounts_file(config)
+    atomic_write_text(accounts_path, "".join(lines))
+    return write_loop_token_file(config, token_payload)
+
+
 def validate_loop_creation(config, max_tasks):
     oauth2 = config.get("oauth2", {})
     if not oauth2.get("Loop Creation", False):

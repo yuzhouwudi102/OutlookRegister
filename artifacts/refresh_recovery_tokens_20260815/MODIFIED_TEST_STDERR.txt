@@ -1,8 +1,0 @@
-test_reads_passwords_from_outlook_token_file (test_refresh_recovery_tokens.RefreshRecoveryTokensTests.test_reads_passwords_from_outlook_token_file) ... ok
-test_refresh_updates_json_and_matching_outlook_record (test_refresh_recovery_tokens.RefreshRecoveryTokensTests.test_refresh_updates_json_and_matching_outlook_record) ... ok
-test_token_needs_refresh_uses_sixty_second_skew (test_refresh_recovery_tokens.RefreshRecoveryTokensTests.test_token_needs_refresh_uses_sixty_second_skew) ... ok
-
-----------------------------------------------------------------------
-Ran 3 tests in 0.019s
-
-OK

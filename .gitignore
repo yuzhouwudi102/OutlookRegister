@@ -1,5 +1,43 @@
-Results/recovery_mailbox_token.json
-Results/recovery_mailbox_token/
-artifacts/rollback-test/
-
+# Runtime output, account data, tokens, screenshots, and generated evidence
 Results/
+artifacts/
+
+# Local environment secrets
+.env
+.env.*
+!.env.example
+
+# Python environments, caches, and coverage
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+build/
+dist/
+*.egg-info/
+
+# Logs, process files, and temporary/editor backups
+*.log
+*.pid
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# IDE and operating-system metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
